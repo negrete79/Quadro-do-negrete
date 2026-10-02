@@ -1,10 +1,10 @@
 {
-  "id": "./",
+  "id": "fases-da-lua-v5",
   "name": "Fases da Lua — Plantio, Madeira e Clima",
   "short_name": "Fases da Lua",
   "description": "Fase da lua ao vivo, calendário de plantio, melhor época para cortar madeira e clima da sua localização. Funciona offline.",
   "lang": "pt-BR",
-  "start_url": "./index.html",
+  "start_url": "./index.html?app=fases-da-lua-v5",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
