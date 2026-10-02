@@ -1,5 +1,5 @@
 /* Service Worker — Fases da Lua */
-const CACHE = 'fases-da-lua-v4';
+const CACHE = 'fases-da-lua-v5';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -31,18 +31,24 @@ self.addEventListener('fetch', e => {
         const cp = resp.clone();
         caches.open(CACHE).then(c => c.put(req, cp));
         return resp;
-      }).catch(() => caches.match(req))
+      }).catch(() => caches.match(req, { ignoreSearch: true }))
     );
     return;
   }
 
+  // Navegação: offline → index.html (ignoreSearch cobre o ?app=… do start_url novo)
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+    e.respondWith(
+      fetch(req).catch(() =>
+        caches.match(req, { ignoreSearch: true })
+          .then(r => r || caches.match('./index.html', { ignoreSearch: true }))
+      )
+    );
     return;
   }
 
   e.respondWith(
-    caches.match(req).then(cached => cached || fetch(req).then(resp => {
+    caches.match(req, { ignoreSearch: true }).then(cached => cached || fetch(req).then(resp => {
       if (resp.ok) {
         const cp = resp.clone();
         caches.open(CACHE).then(c => c.put(req, cp));
