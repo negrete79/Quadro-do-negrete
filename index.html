@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f16">
-<meta name="description" content="Fases da Lua ao vivo, nascer/pôr do sol, calendário de plantio, corte de madeira e clima em tempo real. Funciona offline.">
+<meta name="description" content="Fases da Lua ao vivo, calendário de plantio, corte de madeira e clima em tempo real. Funciona offline.">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,9 +19,9 @@ min-height:100dvh;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 #ceu i{position:fixed;background:#fff;border-radius:50%;opacity:.3;animation:piscar 3s infinite;z-index:0;pointer-events:none}
 @keyframes piscar{0%,100%{opacity:.12}50%{opacity:.6}}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;
 padding:14px 18px;background:#111722e8;backdrop-filter:blur(8px);border-bottom:1px solid #ffffff14}
-h1{font-size:1.25rem}
+h1{font-size:1.25rem;flex:1}
 .ghost{padding:8px 14px;border:1px solid #4db6ff66;border-radius:999px;color:#4db6ff;font-weight:700}
 main{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:14px 14px 24px}
 .tab-page{display:none}.tab-page.ativo{display:block;animation:entrar .25s ease}
@@ -39,12 +39,6 @@ main{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:14px 14px
 .data{color:#4db6ff;font-weight:600;font-size:.95rem}
 .relogio{color:#4db6ff;font-size:1.2rem;font-weight:800;letter-spacing:.5px}
 .aviso{font-size:.75rem;color:#ffb74d;text-align:center;min-height:1.1em;margin-bottom:4px}
-/* linha do sol */
-.linha-sol{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 2px;text-align:center}
-.sol-cel{background:#ffffff0a;border:1px solid #ffffff10;border-radius:12px;padding:8px 4px}
-.sol-cel b{display:block;font-size:1.05rem}
-.sol-cel span{font-size:.7rem;color:#93a0b4}
-/* lua interativa */
 .lua-wrap{position:relative;display:flex;justify-content:center;padding:10px 0 2px;
 touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
 .lua-wrap:active{cursor:grabbing}
@@ -84,6 +78,7 @@ border-radius:999px;pointer-events:none;white-space:nowrap}
 .dicas{padding-left:18px;display:grid;gap:6px;font-size:.9rem}
 /* ---- clima ---- */
 .btn-primario{width:100%;background:#4db6ff;color:#03131f;font-weight:800;padding:13px;border-radius:12px;font-size:1rem}
+.btn-sec{width:100%;border:1px solid #ffffff22;padding:12px;border-radius:12px;font-weight:700}
 .busca{display:flex;gap:8px;margin-top:10px}
 .busca input{flex:1;background:#ffffff10;border:1px solid #ffffff18;color:#fff;padding:11px 12px;border-radius:10px;font-size:1rem}
 .busca button{background:#ffffff14;border-radius:10px;padding:0 14px;font-size:1.1rem}
@@ -101,6 +96,23 @@ border-radius:999px;pointer-events:none;white-space:nowrap}
 .prev-ic{font-size:1.6rem;margin:4px 0}
 .prev-temp{font-size:.9rem;font-weight:700}
 .pequeno{font-size:.7rem}
+/* ---- diagnóstico ---- */
+#diagOverlay{position:fixed;inset:0;z-index:50;background:#000000b8;backdrop-filter:blur(4px);
+display:flex;align-items:flex-end;justify-content:center}
+.diag-box{width:min(560px,100%);max-height:86dvh;overflow:auto;background:#10161f;
+border:1px solid #ffffff18;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.diag-box h3{margin-bottom:12px}
+.diag-item{display:flex;gap:10px;padding:10px 12px;border:1px solid #ffffff10;border-radius:12px;
+background:#ffffff08;margin-bottom:8px;align-items:flex-start}
+.diag-item .ic{font-size:1.1rem;line-height:1.4}
+.diag-item b{font-size:.9rem}
+.diag-item p{font-size:.78rem;color:#9fb0c3;margin-top:2px;word-break:break-word}
+.diag-item.ok{border-color:#37c97844}.diag-item.ok .ic{color:#37c978}
+.diag-item.alerta{border-color:#ffb74d55}.diag-item.alerta .ic{color:#ffb74d}
+.diag-item.erro{border-color:#ff6b6b55}.diag-item.erro .ic{color:#ff6b6b}
+#diagVeredito{border-left:3px solid #4db6ff;background:#4db6ff14;padding:12px;border-radius:10px;
+font-size:.9rem;margin:12px 0;white-space:pre-line}
+.diag-acoes{display:grid;gap:8px}
 /* ---- navegação ---- */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:9;display:flex;background:#0d1320f5;
 border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
@@ -114,7 +126,8 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
 
 <header>
   <h1>🌒 Fases da Lua</h1>
-  <button id="btnInstalar" class="ghost" hidden>⬇ Instalar</button>
+  <button id="btnDiag" class="ghost" title="Diagnóstico">⚙️</button>
+  <button id="btnInstalar" class="ghost">⬇ Instalar</button>
 </header>
 
 <main>
@@ -126,12 +139,6 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
       <div class="cel"><div class="ic">🌙⬇</div><div class="val" id="sePor">—</div><div class="lbl">Pôr da Lua</div></div>
     </div>
     <div class="aviso" id="avisoLocal"></div>
-
-    <div class="linha-sol">
-      <div class="sol-cel">🌅<b id="solNasce">—</b><span>Nascer do Sol</span></div>
-      <div class="sol-cel">☀️<b id="solDur">—</b><span>Duração do dia</span></div>
-      <div class="sol-cel">🌇<b id="solPor">—</b><span>Pôr do Sol</span></div>
-    </div>
 
     <div class="lua-wrap" id="luaWrap">
       <div id="previewBadge" hidden>👁 Prévia — solte para voltar</div>
@@ -193,6 +200,19 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
   <button class="tab" data-tab="madeira"><span class="icone">🪵</span><span>Madeira</span></button>
   <button class="tab" data-tab="clima"><span class="icone">⛅</span><span>Clima</span></button>
 </nav>
+
+<!-- ============ DIAGNÓSTICO ============ -->
+<div id="diagOverlay" hidden>
+  <div class="diag-box" role="dialog" aria-modal="true">
+    <h3>🔧 Diagnóstico do app</h3>
+    <div id="diagLista"></div>
+    <div id="diagVeredito">Executando verificações…</div>
+    <div class="diag-acoes">
+      <button id="diagInstalar" class="btn-primario">⬇ Tentar instalar agora</button>
+      <button id="diagFechar" class="btn-sec">Fechar</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js" defer></script>
 </body>
