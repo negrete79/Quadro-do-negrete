@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Gerar ícones do app</title></head>
+<body style="background:#111;color:#eee;font-family:sans-serif;text-align:center;padding:30px">
+<p>Gere os ícones PNG e coloque na pasta do app:</p>
+<canvas id="c" width="512" height="512" style="border-radius:24px;margin:16px"></canvas><p>
+<a id="d512" download="icon-512.png">⬇️ icon-512.png</a> ·
+<a id="d192" download="icon-192.png">⬇️ icon-192.png</a> ·
+<a id="d180" download="apple-touch-icon.png">⬇️ apple-touch-icon.png</a></p>
+<script>
+const c = document.getElementById('c'), x = c.getContext('2d');
+x.fillStyle = '#0b0f16'; x.beginPath();
+x.moveTo(110,0); x.arcTo(512,0,512,512,110); x.arcTo(512,512,0,512,110);
+x.arcTo(0,512,0,0,110); x.arcTo(0,0,512,0,110); x.fill();
+x.fillStyle = 'rgba(255,255,255,.8)';
+[[80,90,5],[150,60,3],[420,80,4],[460,150,3],[60,420,4],[440,430,5],[120,470,3],[380,480,3]]
+  .forEach(([a,b,r]) => { x.beginPath(); x.arc(a,b,r,0,7); x.fill(); });
+const g = x.createRadialGradient(195,175,20,256,256,180);
+g.addColorStop(0,'#fbfaf1'); g.addColorStop(.55,'#dcd9cd'); g.addColorStop(1,'#9b978c');
+x.fillStyle = g; x.beginPath(); x.arc(256,256,150,0,7); x.fill();
+x.fillStyle = 'rgba(11,15,22,.94)'; x.beginPath(); x.moveTo(256,106);
+x.arc(256,256,150,-Math.PI/2,Math.PI/2,true);
+x.ellipse(256,256,104,150,0,Math.PI/2,Math.PI*1.5,false); x.fill();
+x.fillStyle = 'rgba(27,26,21,.28)';
+[[300,190,34],[330,300,24],[280,360,18],[350,150,14]].forEach(([a,b,r]) =>
+  { x.beginPath(); x.arc(a,b,r,0,7); x.fill(); });
+const u = c.toDataURL('image/png');
+const mini = s => { const m = document.createElement('canvas'); m.width = m.height = s;
+  m.getContext('2d').drawImage(c,0,0,s,s); return m.toDataURL('image/png'); };
+d512.href = u; d192.href = mini(192); d180.href = mini(180);
+</script></body></html>
