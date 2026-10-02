@@ -1,5 +1,5 @@
 /* Service Worker — Fases da Lua */
-const CACHE = 'fases-da-lua-v1';
+const CACHE = 'fases-da-lua-v3';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -24,8 +24,9 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // APIs de clima/cidade: rede primeiro, guarda cópia para offline
-  if (url.hostname.includes('open-meteo') || url.hostname.includes('bigdatacloud')) {
+  // APIs: rede primeiro, guarda cópia para offline
+  const ehApi = ['open-meteo', 'bigdatacloud', 'nominatim'].some(h => url.hostname.includes(h));
+  if (ehApi) {
     e.respondWith(
       fetch(req).then(resp => {
         const cp = resp.clone();
