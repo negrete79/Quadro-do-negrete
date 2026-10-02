@@ -1,6 +1,6 @@
 /* ============================================================
-   FASES DA LUA — app.js  (v3)
-   Astronomia + Sol + Plantio + Madeira + Clima + Lua interativa
+   FASES DA LUA — app.js  (v4)
+   Astronomia + Plantio + Madeira + Clima + Instalação/Diagnóstico
    ============================================================ */
 'use strict';
 
@@ -98,26 +98,6 @@ function nascerESePorLua(lat, lon) {
   return { nascer, sePor };
 }
 
-/* ================= ASTRONOMIA — SOL (equação do nascer do sol) ================= */
-function eventosSol(data, lat, lon) {
-  const n = Math.round((Date.UTC(data.getFullYear(), data.getMonth(), data.getDate(), 12) - J2000) / DIA);
-  const Jstar  = n - lon / 360;
-  const Mdeg   = ((357.5291 + 0.98560028 * Jstar) % 360 + 360) % 360;
-  const M      = Mdeg * RAD;
-  const C      = 1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M);
-  const lam    = ((Mdeg + C + 180 + 102.9372) % 360 + 360) % 360;
-  const L      = lam * RAD;
-  const Jtrans = 2451545 + Jstar + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
-  const dec    = Math.asin(Math.sin(L) * Math.sin(23.4397 * RAD));
-  const fi     = lat * RAD;
-  const cosw   = (Math.sin(-0.833 * RAD) - Math.sin(fi) * Math.sin(dec)) / (Math.cos(fi) * Math.cos(dec));
-  const jd2date = J => new Date(J2000 + (J - 2451545) * DIA);
-  if (cosw < -1) return { nascer: null, por: null, sempreDia: true };
-  if (cosw >  1) return { nascer: null, por: null, sempreNoite: true };
-  const w = Math.acos(cosw) / RAD;
-  return { nascer: jd2date(Jtrans - w / 360), por: jd2date(Jtrans + w / 360) };
-}
-
 /* ================= LOCALIZAÇÃO ================= */
 function refLocal() {
   if (LOCAL && LOCAL.lat != null) return LOCAL;
@@ -179,7 +159,6 @@ function fmtHora(d) {
   const h = d.getHours(), m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m} ${h < 12 ? 'manhã' : h < 18 ? 'tarde' : 'noite'}`;
 }
-const fmtHM = d => d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
 
 function atualizarCeu() {
   const agora = new Date();
@@ -196,7 +175,7 @@ function atualizarLua() {
   const fase = idade / SINODICO;
   const idx = Math.floor(fase * 8 + 0.5) % 8;
   const F = FASES[idx];
-  faseReal = fase; // usado pelas interações
+  faseReal = fase;
 
   $('iluminacao').textContent = Math.round(iluminacao(idade) * 100) + '%';
   $('distancia').textContent = Math.round(distanciaLua(agora)).toLocaleString('pt-BR') + ' km';
@@ -214,30 +193,16 @@ function atualizarLua() {
   }
 
   const loc = refLocal();
-
-  // Lua
   const { nascer, sePor } = nascerESePorLua(loc.lat, loc.lon);
   $('nascer').textContent = fmtHora(nascer);
   $('sePor').textContent = fmtHora(sePor);
-
-  // Sol
-  const sol = eventosSol(agora, loc.lat, loc.lon);
-  $('solNasce').textContent = fmtHM(sol.nascer);
-  $('solPor').textContent   = fmtHM(sol.por);
-  $('solDur').textContent   = (sol.nascer && sol.por)
-    ? (() => { const ms = sol.por - sol.nascer;
-        return `${Math.floor(ms / 3600000)}h${String(Math.round(ms % 3600000 / 60000)).padStart(2, '0')}`; })()
-    : sol.sempreDia ? '24h' : '0h';
-
   $('avisoLocal').textContent = loc.aproximado
     ? '📍 Localização aproximada — ative o GPS na aba Clima para precisão.' : '';
 
-  // destaca fase atual no plantio
   const g = grupoFase(idx);
   document.querySelectorAll('[data-fase-card]')
     .forEach(el => el.classList.toggle('agora', el.dataset.faseCard === g));
 
-  // status madeira
   const av = idx >= 5 ? 'otimo' : idx === 0 ? 'bom' : 'ruim';
   const m = MADEIRA[av];
   $('madeiraStatus').innerHTML =
@@ -246,7 +211,6 @@ function atualizarLua() {
        <b style="color:${m.cor}">${m.titulo}</b></div>
        <p>${m.texto}</p></div>`;
 
-  // próximas fases
   const alvos = [[0, FASES[0]], [SINODICO / 4, FASES[2]], [SINODICO / 2, FASES[4]], [3 * SINODICO / 4, FASES[6]]];
   $('listaProximas').innerHTML = alvos.map(([alvo, f]) => {
     let dias = alvo - idade;
@@ -260,16 +224,15 @@ function atualizarLua() {
 
 /* ================= 🖐️ LUA INTERATIVA ================= */
 const luaWrap = $('luaWrap');
-let faseReal = 0;          // fase real do momento (0..1)
-let faseVisual = null;     // fase em pré-visualização
+let faseReal = 0;
+let faseVisual = null;
 let rafAnim = null;
 let escalaAtual = 1;
 const ponteiros = new Map();
-let arrasto = null;        // {x0, t0, moveu, baseFase}
-let pinca = null;          // {d0, escala0}
+let arrasto = null;
+let pinca = null;
 
 const aplicarTransform = () => { $('luaSvg').style.transform = `scale(${escalaAtual})`; };
-
 function faseIdxDe(f) { return Math.floor((((f % 1) + 1) % 1) * 8 + 0.5) % 8; }
 
 function atualizarPreview(f) {
@@ -293,11 +256,11 @@ function animarFase(de, ate, dur, aoFim) {
 
 function voltarFaseReal() {
   const de = faseVisual;
-  const delta = ((faseReal - de + 1.5) % 1) - 0.5;   // caminho mais curto
+  const delta = ((faseReal - de + 1.5) % 1) - 0.5;
   animarFase(de, de + delta, 700, () => {
     faseVisual = null;
     $('previewBadge').hidden = true;
-    atualizarLua(); // restaura nome, % e SVG oficiais
+    atualizarLua();
   });
 }
 
@@ -317,7 +280,7 @@ luaWrap.addEventListener('pointerdown', e => {
   e.preventDefault();
   luaWrap.setPointerCapture(e.pointerId);
   ponteiros.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (rafAnim) { cancelAnimationFrame(rafAnim); rafAnim = null; } // pausa animação em andamento
+  if (rafAnim) { cancelAnimationFrame(rafAnim); rafAnim = null; }
   if (ponteiros.size === 1) {
     arrasto = { x0: e.clientX, t0: performance.now(), moveu: false,
                 baseFase: faseVisual !== null ? faseVisual : faseReal };
@@ -344,7 +307,7 @@ luaWrap.addEventListener('pointermove', e => {
     const dx = e.clientX - arrasto.x0;
     if (Math.abs(dx) > 10) arrasto.moveu = true;
     if (arrasto.moveu) {
-      faseVisual = arrasto.baseFase + dx / 280; // 280px = ciclo completo
+      faseVisual = arrasto.baseFase + dx / 280;
       desenharLua(faseVisual);
       atualizarPreview(faseVisual);
       $('previewBadge').hidden = false;
@@ -354,7 +317,7 @@ luaWrap.addEventListener('pointermove', e => {
 
 function soltar(e) {
   ponteiros.delete(e.pointerId);
-  if (ponteiros.size === 1) { pinca = null; return; } // dedo restante continua
+  if (ponteiros.size === 1) { pinca = null; return; }
   if (ponteiros.size === 0) {
     if (pinca) { pinca = null; voltarZoom(); }
     else if (arrasto) {
@@ -362,7 +325,6 @@ function soltar(e) {
         $('previewBadge').textContent = '↩ Voltando à fase real…';
         voltarFaseReal();
       } else if (!arrasto.moveu && performance.now() - arrasto.t0 < 400 && faseVisual === null) {
-        // TOQUE: anima um ciclo completo e volta ao estágio normal
         $('previewBadge').textContent = '🌕 Ciclo lunar…';
         $('previewBadge').hidden = false;
         animarFase(faseReal, faseReal + 1, 4000, () => {
@@ -459,7 +421,6 @@ async function obterClima(lat, lon) {
   return r.json();
 }
 
-/* Geocodificação reversa: Nominatim (precisa, bairro/cidade próxima) → BigDataCloud */
 async function nomeCidade(lat, lon) {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&accept-language=pt-BR`);
@@ -532,7 +493,6 @@ function definirLocal(lat, lon, cidade, precisao) {
   carregarClima(lat, lon, LOCAL.cidade);
 }
 
-/* ---- GPS do dispositivo ---- */
 function pedirGPS(silencioso) {
   if (!navigator.geolocation) {
     if (!silencioso) $('localStatus').textContent = 'Seu navegador não suporta GPS.';
@@ -550,7 +510,7 @@ function pedirGPS(silencioso) {
       3: '⏱️ Tempo esgotado — tente de novo em local aberto (céu visível).'
     };
     $('localStatus').textContent = msgs[err.code] || 'Erro ao obter localização.';
-  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }); // sempre leitura fresca do GPS
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 
 async function gpsAutomatico() {
@@ -561,10 +521,9 @@ async function gpsAutomatico() {
       return;
     }
   } catch (_) {}
-  pedirGPS(true); // pede GPS do aparelho silenciosamente ao abrir
+  pedirGPS(true);
 }
 
-/* ---- Busca de cidade ---- */
 async function buscarCidade() {
   const nome = $('inpCidade').value.trim();
   if (!nome) return;
@@ -580,6 +539,230 @@ async function buscarCidade() {
  $('btnBuscar').addEventListener('click', buscarCidade);
  $('inpCidade').addEventListener('keydown', e => { if (e.key === 'Enter') buscarCidade(); });
  $('btnGps').addEventListener('click', () => pedirGPS(false));
+
+/* ============================================================
+   ⬇️ INSTALAÇÃO — botão aparece ao entrar, some quando instalado
+   ============================================================ */
+let deferredPrompt = null;
+let resolverPrompt = null;
+const btnInstalar = $('btnInstalar');
+
+const rodandoComoApp = () =>
+  window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+async function appJaInstaladoNoAparelho() {
+  try {
+    if (navigator.getInstalledRelatedApps) {
+      const apps = await navigator.getInstalledRelatedApps();
+      return apps.length > 0;
+    }
+  } catch (_) {}
+  return false;
+}
+
+async function atualizarBotaoInstalar() {
+  if (rodandoComoApp()) { btnInstalar.hidden = true; return; }
+  const jaTem = await appJaInstaladoNoAparelho();
+  btnInstalar.hidden = jaTem;   // instalado no aparelho → botão some
+}
+
+async function tentarInstalar() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    return true;
+  }
+  // O evento pode não ter chegado ainda — espera até 6s
+  const veio = await Promise.race([
+    new Promise(r => { resolverPrompt = () => r(true); setTimeout(() => r(false), 6000); })
+  ]);
+  if (veio && deferredPrompt) {
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    return true;
+  }
+  return false;
+}
+
+btnInstalar.addEventListener('click', async () => {
+  btnInstalar.hidden = true;
+  const ok = await tentarInstalar();
+  if (ok) return;
+  const jaTem = await appJaInstaladoNoAparelho();
+  if (jaTem) {
+    abrirDiag(); // mostra que já está instalado e como abrir
+  } else {
+    btnInstalar.hidden = false;
+    abrirDiag();
+  }
+});
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!rodandoComoApp()) btnInstalar.hidden = false;
+  if (resolverPrompt) { resolverPrompt(); resolverPrompt = null; }
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  btnInstalar.hidden = true;
+});
+
+/* ============================================================
+   🔧 DIAGNÓSTICO — verifica por que não instala / se já instalou
+   ============================================================ */
+const diagOverlay = $('diagOverlay');
+let diagAbertoPorBotao = false;
+
+function abrirDiag() { diagOverlay.hidden = false; executarDiagnostico(); }
+function fecharDiag() { diagOverlay.hidden = true; }
+ $('btnDiag').addEventListener('click', () => { diagAbertoPorBotao = true; abrirDiag(); });
+ $('diagFechar').addEventListener('click', fecharDiag);
+diagOverlay.addEventListener('click', e => { if (e.target === diagOverlay && diagAbertoPorBotao) fecharDiag(); });
+
+function linhaDiag(estado, titulo, detalhe) {
+  const ic = estado === 'ok' ? '✅' : estado === 'alerta' ? '⚠️' : '❌';
+  return `<div class="diag-item ${estado}">
+    <span class="ic">${ic}</span>
+    <div><b>${titulo}</b><p>${detalhe}</p></div></div>`;
+}
+
+async function executarDiagnostico() {
+  const itens = [];
+  const add = (cond, titulo, ok, alerta, erro) =>
+    itens.push(linhaDiag(cond ? 'ok' : (alerta ? 'alerta' : 'erro'), titulo, cond ? ok : (erro || alerta)));
+
+  /* 1. HTTPS */
+  const seguro = location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
+  add(seguro, 'Conexão segura (HTTPS)',
+    'Servido via HTTPS — requisito atendido.', null,
+    `Está em "${location.protocol}//" — o navegador SÓ instala via HTTPS ou localhost.`);
+
+  /* 2. Service Worker */
+  let reg = null;
+  try { reg = await navigator.serviceWorker.getRegistration(); } catch (_) {}
+  const swOk = !!reg;
+  add(swOk, 'Service Worker registrado',
+    swOk ? 'sw.js registrado com sucesso.' : null, null,
+    'sw.js não encontrado. Confira se o arquivo sw.js está na MESMA pasta do index.html no GitHub.');
+
+  const controlando = !!(navigator.serviceWorker.controller || (reg && reg.active));
+  add(controlando, 'Service Worker ativo',
+    controlando ? 'Ativo e controlando o app.' : null,
+    'Registrado mas ainda assumindo o controle — feche e reabra o app.',
+    'Sem Service Worker ativo — requisito obrigatório para instalar.');
+
+  /* 3. Manifest */
+  let man = null, manErro = '';
+  try {
+    const r = await fetch('manifest.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    man = await r.json();
+  } catch (e) { manErro = e.message; }
+  add(!!man, 'manifest.json carregado',
+    man ? `"${man.name || 'sem nome'}" — válido.` : null, null,
+    `Falhou: ${manErro}. Confira se o arquivo se chama exatamente manifest.json e é um JSON válido.`);
+
+  let camposOk = false;
+  if (man) {
+    camposOk = !!(man.name && man.start_url != null && man.display &&
+                  Array.isArray(man.icons) && man.icons.length >= 1);
+    add(camposOk, 'Campos obrigatórios do manifest',
+      'name, start_url, display e icons presentes.', null,
+      'Faltam campos obrigatórios (name, start_url, display, icons). Substitua o manifest.json pelo da versão nova.');
+  }
+
+  /* 4. Ícones */
+  let iconesOk = false;
+  if (man && Array.isArray(man.icons)) {
+    const resultados = [];
+    for (const ic of man.icons) {
+      try {
+        const url = new URL(ic.src, location.href).href;
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        resultados.push(true);
+      } catch (_) { resultados.push(false); }
+    }
+    iconesOk = resultados.some(Boolean);
+    add(iconesOk, 'Ícones carregam corretamente',
+      `${resultados.filter(Boolean).length}/${resultados.length} ícones OK (inclusive PNG 192/512).`, null,
+      'Nenhum ícone carregou. Gere os PNGs com gerar-icones.html e suba icon-192.png e icon-512.png na pasta.');
+  } else {
+    itens.push(linhaDiag('erro', 'Ícones carregam corretamente',
+      'Sem icons no manifest — impossível instalar.'));
+  }
+
+  /* 5. Suporte do navegador */
+  const suporta = 'onbeforeinstallprompt' in window || 'serviceWorker' in navigator;
+  add(suporta, 'Navegador suporta instalação PWA',
+    'Chrome/Edge detectado com suporte.', null,
+    'Este navegador não suporta instalação. Use o Google Chrome no Android.');
+
+  /* 6. Já está rodando como app? */
+  const standalone = rodandoComoApp();
+  itens.push(linhaDiag(standalone ? 'ok' : 'alerta', 'Modo de execução',
+    standalone ? '✨ Você está DENTRO do app instalado (standalone). Tudo certo!'
+               : 'Você está abrindo pelo navegador (aba do Chrome), NÃO pelo app instalado.'));
+
+  /* 7. Instalado no aparelho? */
+  let instalado = false, relErro = '';
+  try {
+    if (navigator.getInstalledRelatedApps) instalado = (await navigator.getInstalledRelatedApps()).length > 0;
+  } catch (e) { relErro = e.message; }
+  itens.push(linhaDiag(instalado ? 'ok' : 'alerta', 'App instalado no aparelho',
+    instalado ? '📦 O Chrome confirma: este app JÁ ESTÁ INSTALADO neste celular!'
+              : (relErro ? `Não foi possível verificar (${relErro}).`
+                         : 'Nenhum registro de instalação encontrado pelo Chrome.')));
+
+  /* ---------- Veredito ---------- */
+  const veredito = $('diagVeredito');
+  let texto;
+  if (standalone) {
+    texto = '🎉 TUDO CERTO!\nVocê está usando o app instalado. O botão "Instalar" fica escondido porque não é mais necessário.';
+  } else if (instalado) {
+    texto = '📦 O APP JÁ ESTÁ INSTALADO NESTE APARELHO!\n\n' +
+      '1. Feche o Chrome.\n' +
+      '2. Vá à tela inicial / gaveta de apps do celular.\n' +
+      '3. Procure o ícone 🌒 "Fases da Lua" e abra por ele.\n\n' +
+      'O botão "Instalar" ficou escondido justamente porque o app já existe. ' +
+      'Se quiser reinstalar do zero: segure o ícone → Desinstalar, depois volte aqui e toque em Instalar.';
+  } else if (seguro && swOk && controlando && man && camposOk && iconesOk) {
+    texto = '✅ TODOS OS REQUISITOS ATENDIDOS!\n\n' +
+      'Toque em "⬇ Tentar instalar agora" acima.\n' +
+      'Se nada acontecer, instale pelo menu do Chrome: ⋮ (canto superior direito) → "Instalar app" / "Adicionar à tela inicial".\n' +
+      'Dica: o Chrome pode demorar alguns segundos após abrir a página para liberar o prompt — aguarde 5s e tente de novo.';
+  } else {
+    const faltando = [];
+    if (!seguro) faltando.push('• Hospedar em HTTPS (GitHub Pages já é HTTPS — confira o endereço)');
+    if (!swOk || !controlando) faltando.push('• sw.js na mesma pasta e recarregar a página');
+    if (!man || !camposOk) faltando.push('• manifest.json válido e completo');
+    if (!iconesOk) faltando.push('• ícones PNG na pasta');
+    texto = '❌ REQUISITOS PENDENTES:\n\n' + faltando.join('\n') +
+      '\n\nCorrigindo os itens acima, o Chrome libera a instalação.';
+  }
+  veredito.textContent = texto;
+}
+
+ $('diagInstalar').addEventListener('click', async () => {
+  const btn = $('diagInstalar');
+  btn.textContent = '⏳ Preparando…';
+  const ok = await tentarInstalar();
+  btn.textContent = ok ? '✅ Prompt enviado!' : '⬇ Tentar instalar agora';
+  if (!ok) {
+    $('diagVeredito').textContent =
+      'O Chrome não liberou o prompt agora.\n\n' +
+      'Provavelmente o app JÁ ESTÁ INSTALADO (veja o item "App instalado no aparelho" acima) — ' +
+      'abra pelo ícone 🌒 na tela inicial do celular.\n\n' +
+      'Ou instale manualmente: menu ⋮ do Chrome → "Instalar app".\n' +
+      'Dica: aguarde ~5 segundos após abrir a página e tente de novo.';
+  }
+  setTimeout(() => { btn.textContent = '⬇ Tentar instalar agora'; }, 2500);
+});
 
 /* ================= NAVEGAÇÃO / ESTRELAS / PWA ================= */
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
@@ -598,16 +781,6 @@ function criarEstrelas() {
   }
 }
 
-let evtInstalar = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault(); evtInstalar = e; $('btnInstalar').hidden = false;
-});
- $('btnInstalar').addEventListener('click', async () => {
-  $('btnInstalar').hidden = true;
-  if (evtInstalar) { evtInstalar.prompt(); await evtInstalar.userChoice; evtInstalar = null; }
-});
-window.addEventListener('appinstalled', () => $('btnInstalar').hidden = true);
-
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 /* ================= INICIALIZAÇÃO ================= */
@@ -618,8 +791,8 @@ atualizarCeu();
 atualizarLua();
 setInterval(atualizarCeu, 1000);
 setInterval(atualizarLua, 60000);
+atualizarBotaoInstalar();
 
-// clima salvo (offline) + GPS do dispositivo sempre que abrir
 if (LOCAL && LOCAL.lat != null) {
   $('localStatus').textContent = LOCAL.cidade || `${LOCAL.lat.toFixed(4)}, ${LOCAL.lon.toFixed(4)}`;
   const salvo = localStorage.getItem('fdl_clima');
