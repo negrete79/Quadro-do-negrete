@@ -1,5 +1,5 @@
 /* Service Worker — Fases da Lua */
-const CACHE = 'fases-da-lua-v3';
+const CACHE = 'fases-da-lua-v4';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -24,7 +24,6 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // APIs: rede primeiro, guarda cópia para offline
   const ehApi = ['open-meteo', 'bigdatacloud', 'nominatim'].some(h => url.hostname.includes(h));
   if (ehApi) {
     e.respondWith(
@@ -37,13 +36,11 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Navegação: offline → index.html
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
     return;
   }
 
-  // Demais arquivos: cache primeiro
   e.respondWith(
     caches.match(req).then(cached => cached || fetch(req).then(resp => {
       if (resp.ok) {
