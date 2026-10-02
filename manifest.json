@@ -1,0 +1,19 @@
+{
+  "name": "Fases da Lua — Plantio, Madeira e Clima",
+  "short_name": "Fases da Lua",
+  "description": "Fase da lua ao vivo, calendário de plantio, melhor época para cortar madeira e clima da sua localização. Funciona offline.",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#04060b",
+  "theme_color": "#0b0f16",
+  "categories": ["weather", "lifestyle", "utilities"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
