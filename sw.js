@@ -1,5 +1,5 @@
 /* Service Worker — Fases da Lua */
-const CACHE = 'fases-da-lua-v5';
+const CACHE = 'fases-da-lua-v6';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -36,7 +36,6 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Navegação: offline → index.html (ignoreSearch cobre o ?app=… do start_url novo)
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req).catch(() =>
