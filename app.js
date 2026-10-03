@@ -1,5 +1,5 @@
 /* ============================================================
-   FASES DA LUA — app.js  (v5)
+   FASES DA LUA — app.js  (v6)
    Astronomia + Plantio + Madeira + Clima + Instalação/Diagnóstico
    ============================================================ */
 'use strict';
@@ -34,6 +34,15 @@ let LOCAL = null;
 try { LOCAL = JSON.parse(localStorage.getItem('fdl_local') || 'null'); } catch (_) {}
 
 const $ = id => document.getElementById(id);
+
+/* ================= TOAST ================= */
+function mostrarToast(msg, ms = 4500) {
+  const t = document.createElement('div');
+  t.id = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
 
 /* ================= ASTRONOMIA — LUA ================= */
 const norm = a => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -541,9 +550,9 @@ async function buscarCidade() {
  $('btnGps').addEventListener('click', () => pedirGPS(false));
 
 /* ============================================================
-   ⬇️ INSTALAÇÃO (v5) — identidade única anti-conflito
+   ⬇️ INSTALAÇÃO — some na hora em que o app é instalado
    ============================================================ */
-const ID_DO_APP = 'fases-da-lua-v5';   // igual ao "id" do manifest.json
+const ID_DO_APP = 'fases-da-lua-v5';
 
 let deferredPrompt = null;
 let resolverPrompt = null;
@@ -558,14 +567,12 @@ async function appsInstalados() {
   } catch (_) {}
   return [];
 }
-
-// O app detectado é ESTE app (compara id/url da identidade nova)?
 const ehEsteApp = a => (a.id || '').includes(ID_DO_APP) || (a.url || '').includes(ID_DO_APP);
 
 async function atualizarBotaoInstalar() {
   if (rodandoComoApp()) { btnInstalar.hidden = true; return; }
   const apps = await appsInstalados();
-  btnInstalar.hidden = apps.some(ehEsteApp); // só some se ESTE app estiver instalado
+  btnInstalar.hidden = apps.some(ehEsteApp);
 }
 
 async function tentarInstalar() {
@@ -604,20 +611,40 @@ window.addEventListener('beforeinstallprompt', e => {
 
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
-  btnInstalar.hidden = true;
+  btnInstalar.hidden = true;          // botão some NA HORA da instalação
+  $('diagInstalar').hidden = true;    // some também dentro do diagnóstico
+  fecharDiag();
+  mostrarToast('✅ App instalado! Abra pelo ícone 🌒 na tela inicial.');
+});
+
+// se o usuário saiu e voltou (ex.: instalou por fora), reavalia o botão
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) atualizarBotaoInstalar();
 });
 
 /* ============================================================
-   🔧 DIAGNÓSTICO (v5) — detecta o conflito de app antigo
+   🔧 DIAGNÓSTICO — sempre termina, sempre deixa fechar
    ============================================================ */
 const diagOverlay = $('diagOverlay');
-let diagAbertoPorBotao = false;
 
-function abrirDiag() { diagOverlay.hidden = false; executarDiagnostico(); }
+function abrirDiag() {
+  diagOverlay.hidden = false;
+  $('diagLista').innerHTML = '';
+  $('diagVeredito').textContent = '🔎 Executando verificações…';
+  $('diagInstalar').hidden = rodandoComoApp();
+  executarDiagnostico()
+    .catch(e => {
+      $('diagVeredito').textContent =
+        '⚠️ O diagnóstico não conseguiu terminar (' + (e && e.message ? e.message : e) + ').\n\n' +
+        'Mas os botões funcionam. Toque em "⬇ Tentar instalar agora" ou em Fechar.';
+    });
+}
 function fecharDiag() { diagOverlay.hidden = true; }
- $('btnDiag').addEventListener('click', () => { diagAbertoPorBotao = true; abrirDiag(); });
+
+ $('btnDiag').addEventListener('click', abrirDiag);
  $('diagFechar').addEventListener('click', fecharDiag);
-diagOverlay.addEventListener('click', e => { if (e.target === diagOverlay && diagAbertoPorBotao) fecharDiag(); });
+diagOverlay.addEventListener('click', e => { if (e.target === diagOverlay) fecharDiag(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharDiag(); });
 
 function linhaDiag(estado, titulo, detalhe) {
   const ic = estado === 'ok' ? '✅' : estado === 'alerta' ? '⚠️' : '❌';
@@ -668,12 +695,9 @@ async function executarDiagnostico() {
     add(idUnico, 'Identidade única do app (anti-conflito)',
       `id: "${man.id}" · start_url: "${man.start_url}" — não colide com apps antigos deste site.`, null,
       `O manifest não tem o id novo "${ID_DO_APP}". Substitua o manifest.json pela versão nova.`);
-  }
 
-  let camposOk = false;
-  if (man) {
-    camposOk = !!(man.name && man.start_url != null && man.display && man.id &&
-                  Array.isArray(man.icons) && man.icons.length >= 1);
+    const camposOk = !!(man.name && man.start_url != null && man.display && man.id &&
+                        Array.isArray(man.icons) && man.icons.length >= 1);
     add(camposOk, 'Campos obrigatórios do manifest',
       'name, id, start_url, display e icons presentes.', null,
       'Faltam campos obrigatórios. Substitua o manifest.json pela versão nova.');
@@ -712,7 +736,7 @@ async function executarDiagnostico() {
     standalone ? '✨ Você está DENTRO do app instalado (standalone). Tudo certo!'
                : 'Você está abrindo pelo navegador (aba do Chrome), NÃO pelo app instalado.'));
 
-  /* 8. Qual app está instalado? (detecta o conflito) */
+  /* 8. Qual app está instalado? */
   const apps = await appsInstalados();
   const esteInstalado = apps.some(ehEsteApp);
   const idDetectado = apps.length ? (apps[0].id || apps[0].url || '(sem id)') : '';
@@ -725,9 +749,12 @@ async function executarDiagnostico() {
       `📦 Detectado id "${idDetectado}" — é este app mesmo. Abra pelo ícone 🌒 na tela inicial.`));
   } else {
     itens.push(linhaDiag('alerta', '⚠️ CONFLITO: outro app antigo ocupa este site',
-      `O Chrome detecta instalado um app com id "${idDetectado}" — este NÃO é o app novo (ícone "G" no aviso dele). ` +
-      `Por isso ele diz "já está instalado" sem você ter instalado. Com a identidade nova (v5) o Chrome aceita instalar este app separadamente.`));
+      `O Chrome detecta instalado um app com id "${idDetectado}" — este NÃO é o app novo. ` +
+      `Com a identidade nova (v5) o Chrome aceita instalar este app separadamente.`));
   }
+
+  /* ---------- Renderiza itens ---------- */
+  $('diagLista').innerHTML = itens.join('');
 
   /* ---------- Veredito ---------- */
   const veredito = $('diagVeredito');
@@ -740,16 +767,14 @@ async function executarDiagnostico() {
       '2. Vá à tela inicial / gaveta de apps.\n' +
       '3. Procure o ícone 🌒 "Fases da Lua" e abra por ele.';
   } else if (apps.length) {
-    texto = '🧩 PROBLEMA IDENTIFICADO: APP FANTASMA!\n\n' +
-      'Existe um app ANTIGO registrado pelo Chrome neste mesmo site (por isso ele diz "já instalado" sem você ter instalado — o ícone "G" do aviso é dele).\n\n' +
-      'SOLUÇÃO PRINCIPAL (já aplicada nesta versão):\n' +
-      '1. Substitua manifest.json e sw.js pelos da versão v5.\n' +
-      '2. Feche e reabra o app.\n' +
-      '3. Toque em ⬇ Instalar — agora o Chrome ACEITA, pois é um app novo e separado.\n\n' +
+    texto = '🧩 APP FANTASMA DETECTADO\n\n' +
+      'Um app ANTIGO deste site está registrado no Chrome (por isso ele diz "já instalado").\n\n' +
+      'Com os arquivos v5 (manifest com id único) este app novo instala separado:\n' +
+      '• Toque em "⬇ Tentar instalar agora" acima.\n\n' +
       'OPCIONAL (limpar o fantasma):\n' +
-      '• Digite chrome://webapks na barra do Chrome para ver a lista de apps instalados por ele.\n' +
-      '• Ajustes do celular > Apps > procure o app antigo > Desinstalar.';
-  } else if (seguro && swOk && controlando && man && camposOk && iconesOk) {
+      '• Digite chrome://webapks no Chrome para ver a lista.\n' +
+      '• Ajustes do celular > Apps > app antigo > Desinstalar.';
+  } else if (seguro && swOk && controlando && man && iconesOk) {
     texto = '✅ TODOS OS REQUISITOS ATENDIDOS!\n\n' +
       'Toque em "⬇ Tentar instalar agora" acima.\n' +
       'Se nada acontecer: menu ⋮ do Chrome → "Instalar app".\n' +
@@ -757,8 +782,8 @@ async function executarDiagnostico() {
   } else {
     const faltando = [];
     if (!seguro) faltando.push('• Hospedar em HTTPS (GitHub Pages já é HTTPS — confira o endereço)');
-    if (!swOk || !controlando) faltando.push('• sw.js novo (v5) na mesma pasta e reabrir o app');
-    if (!man || !camposOk) faltando.push('• manifest.json novo (v5) com id único');
+    if (!swOk || !controlando) faltando.push('• sw.js novo (v6) na mesma pasta e reabrir o app');
+    if (!man) faltando.push('• manifest.json novo (v5) com id único');
     if (!iconesOk) faltando.push('• ícones PNG na pasta');
     texto = '❌ REQUISITOS PENDENTES:\n\n' + faltando.join('\n') +
       '\n\nCorrigindo os itens acima, o Chrome libera a instalação.';
@@ -777,7 +802,7 @@ async function executarDiagnostico() {
       '1. Aguarde ~5 segundos após abrir a página e toque de novo.\n' +
       '2. Ou use o menu ⋮ do Chrome → "Instalar app".\n' +
       '3. Se ainda disser "já instalado", veja o item de CONFLITO acima: ' +
-      'existe um app antigo deste site no aparelho. Com os arquivos v5 instalados, este app novo é separado e instala normal.';
+      'existe um app antigo deste site no aparelho. Com os arquivos v5, este app novo é separado e instala normal.';
   }
   setTimeout(() => { btn.textContent = '⬇ Tentar instalar agora'; }, 2500);
 });
