@@ -1,7 +1,7 @@
 /* ============================================================
-   FASES DA LUA — app.js  (v7)
-   Lua realista + tabelas de Meeus + hemisfério sul + Plantio
-   + Madeira + Clima + Instalação/Diagnóstico
+   FASES DA LUA — app.js  (v8)
+   Astronomia estável + hemisfério sul + Plantio + Madeira
+   + Clima + Instalação simples
    ============================================================ */
 'use strict';
 
@@ -11,7 +11,7 @@ const J2000    = Date.UTC(2000, 0, 1, 12);
 const NOVA_REF = Date.UTC(2000, 0, 6, 18, 14);
 const RAD = Math.PI / 180;
 const DIA = 86400000;
-const H0  = 0.125 * RAD;   // altitude geocêntrica do nascer/pôr (refração+semi-diâmetro−paralaxe)
+const H0  = 0.125 * RAD;
 
 const FASES = [
   { nome: 'Lua nova',              emoji: '🌑' },
@@ -33,95 +33,40 @@ const SIGNOS = [
 /* ---------- Estado ---------- */
 let LOCAL = null;
 try { LOCAL = JSON.parse(localStorage.getItem('fdl_local') || 'null'); } catch (_) {}
-let sulAtual = true; // Brasil por padrão; GPS ajusta depois
+let sulAtual = true;
 
 const $ = id => document.getElementById(id);
 
-/* ================= TOAST ================= */
 function mostrarToast(msg, ms = 4500) {
   const t = document.createElement('div');
-  t.id = 'toast'; t.textContent = msg;
+  t.id = 'toast';
+  t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), ms);
+  setTimeout(function () { t.remove(); }, ms);
 }
 
 /* ============================================================
-   ASTRONOMIA — posição da Lua pelas tabelas de Meeus (cap. 47)
-   Precisão: longitude/latitude ±0.01°, distância ±poucos km
+   ASTRONOMIA (série simplificada — estável e comprovada)
    ============================================================ */
 const norm = a => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 const diasJ2000 = ms => (ms - J2000) / DIA;
 
-/* Tabela 47.A — longitude (1e-6 grau) e distância (1e-3 km) [cos/sin] */
-const TAB_LON = [
-[6288774,0,0,1,0],[1274027,2,0,-1,0],[658314,2,0,0,0],[213618,0,0,2,0],
-[-185116,0,1,0,0],[-114332,0,0,0,2],[58793,2,0,-2,0],[57066,2,-1,-1,0],
-[53322,2,0,1,0],[45758,2,-1,0,0],[-40923,0,1,-1,0],[-34720,1,0,0,0],
-[-30383,0,1,1,0],[15327,2,0,0,-2],[-12528,0,0,1,2],[10980,0,0,1,-2],
-[10675,4,0,-1,0],[10034,0,0,3,0],[8548,4,0,-2,0],[-7888,2,1,-1,0],
-[-6766,2,1,0,0],[-5163,1,0,-1,0],[4987,1,1,0,0],[4036,2,-1,1,0],
-[3994,2,0,2,0],[3861,4,0,0,0],[3665,2,0,-3,0],[-2689,0,1,-2,0],
-[-2602,2,0,-1,2],[2390,2,-1,-2,0],[-2348,1,0,1,0],[2236,2,-2,0,0],
-[-2120,0,1,2,0],[-2069,0,2,0,0],[2048,2,-2,-1,0],[-1773,2,0,1,-2],
-[-1595,2,0,0,2],[1215,4,-1,-1,0],[-1110,0,0,2,2],[-892,3,0,-1,0],
-[-810,2,1,1,0],[759,4,-1,-2,0],[-713,0,2,-1,0],[-700,2,2,-1,0],
-[691,2,1,-2,0],[596,2,-1,0,-2],[549,4,0,1,0],[537,0,0,4,0],
-[520,4,-1,0,0],[-487,1,0,-2,0],[-399,2,1,0,-2],[-381,0,0,2,-2],
-[351,1,1,1,0],[-340,3,0,-2,0],[330,4,0,-3,0],[327,2,-1,2,0],
-[-323,0,2,1,0],[299,1,1,-1,0],[294,2,0,3,0]];
-
-/* Tabela 47.B — latitude (1e-6 grau) */
-const TAB_LAT = [
-[5128122,0,0,0,1],[280602,0,0,1,1],[277693,0,0,1,-1],[173237,2,0,0,-1],
-[55413,2,0,-1,-1],[46271,2,0,-1,1],[32573,2,0,0,1],[17198,0,0,2,1],
-[9266,0,0,2,-1],[8822,2,-1,0,-1],[8216,2,0,-2,-1],[4324,2,0,-2,1],
-[4200,2,-1,0,1],[-3359,2,1,0,-1],[2463,2,-1,-1,1],[2211,2,-1,0,0],
-[2065,0,1,-1,-1],[-1870,0,1,0,1],[1828,0,1,-1,1],[-1794,0,1,0,-1],
-[-1749,0,1,1,-1],[-1565,1,0,0,-1],[-1491,0,2,1,0],[-1475,0,0,-1,1]??0];
-
-/* Tabela Σr — distância (1e-3 km, cossenos) */
-const TAB_DIST = [
-[-20905355,0,0,1,0],[-3699111,2,0,-1,0],[-2955968,2,0,0,0],[-569925,0,0,2,0],
-[48888,0,1,0,0],[-3149,0,0,0,2],[246158,2,0,-2,0],[-152138,2,-1,-1,0],
-[-170733,2,0,1,0],[-204586,2,-1,0,0],[-129620,0,1,-1,0],[108743,1,0,0,0],
-[104755,0,1,1,0],[10321,2,0,0,-2],[79661,0,0,1,-2],[-34782,4,0,-1,0],
-[-23210,0,0,3,0],[-21636,4,0,-2,0],[24208,2,1,-1,0],[30824,2,1,0,0],
-[-8379,1,0,-1,0],[-16675,1,1,0,0],[-12831,2,-1,1,0],[-10445,2,0,2,0],
-[-11650,4,0,0,0],[14403,2,0,-3,0],[-7003,0,1,-2,0],[10056,2,-1,-2,0],
-[6322,1,0,1,0],[-9884,2,-2,0,0],[5750,0,1,2,0]];
-
-function argumentosLua(date) {
-  const T = diasJ2000(date.getTime()) / 36525;
-  return {
-    Lp: (218.3164477 + 481267.88123421 * T) * RAD,
-    D:  (297.8501921 + 445267.1114034 * T) * RAD,
-    M:  (357.5291092 + 35999.0502909 * T) * RAD,
-    Mp: (134.9633964 + 477198.8675055 * T) * RAD,
-    F:  (93.2720950  + 483202.0175233 * T) * RAD,
-    A1: (119.75 + 131.849   * T) * RAD,
-    A2: (53.09  + 479264.290 * T) * RAD,
-    A3: (313.45 + 481266.484 * T) * RAD
-  };
-}
-
 function posicaoLua(date) {
-  const { Lp, D, M, Mp, F, A1, A2, A3 } = argumentosLua(date);
-  let sl = 0, sb = 0, sr = 0;
-  for (const [c, d, m, mp, f] of TAB_LON)  sl += c * Math.sin(d * D + m * M + mp * Mp + f * F);
-  for (const [c, d, m, mp, f] of TAB_LAT)  sb += c * Math.sin(d * D + m * M + mp * Mp + f * F);
-  for (const [c, d, m, mp, f] of TAB_DIST) sr += c * Math.cos(d * D + m * M + mp * Mp + f * F);
-  sl += 3958 * Math.sin(A1) + 1962 * Math.sin(Lp - F) + 318 * Math.sin(A2);
-  sb += -2235 * Math.sin(Lp) + 382 * Math.sin(A3) + 175 * Math.sin(A1 - F)
-      + 175 * Math.sin(A1 + F) + 127 * Math.sin(Lp - Mp) - 115 * Math.sin(Lp + Mp);
-
-  const lon  = norm(Lp + sl * 1e-6 * RAD);   // longitude eclíptica
-  const lat  = sb * 1e-6 * RAD;              // latitude eclíptica
-  const dist = 385000.56 + sr / 1000;        // km — bate com apps de referência
-
-  const eps = 23.4392911 * RAD;
-  const ra  = norm(Math.atan2(Math.sin(lon) * Math.cos(eps) - Math.tan(lat) * Math.sin(eps), Math.cos(lon)));
-  const dec = Math.asin(Math.sin(lat) * Math.cos(eps) + Math.cos(lat) * Math.sin(eps) * Math.sin(lon));
-  return { lon, lat, ra, dec, dist };
+  const T = diasJ2000(date.getTime()) / 36525;
+  const D  = (297.8502 + 445267.1115 * T) * RAD;
+  const Ms = (357.5291 + 35999.0503 * T) * RAD;
+  const Mp = (134.9634 + 477198.8676 * T) * RAD;
+  const F  = (93.2721 + 483202.0175 * T) * RAD;
+  const lon = (218.3165 + 481267.8813 * T) * RAD +
+    (6.289 * Math.sin(Mp) + 1.274 * Math.sin(2 * D - Mp) + 0.658 * Math.sin(2 * D) +
+     0.214 * Math.sin(2 * Mp) - 0.186 * Math.sin(Ms) - 0.114 * Math.sin(2 * F)) * RAD;
+  const beta = 5.128 * Math.sin(F) * RAD;
+  const eps = 23.4393 * RAD;
+  const ra  = norm(Math.atan2(Math.sin(lon) * Math.cos(eps) - Math.tan(beta) * Math.sin(eps), Math.cos(lon)));
+  const dec = Math.asin(Math.sin(beta) * Math.cos(eps) + Math.cos(beta) * Math.sin(eps) * Math.sin(lon));
+  const dist = 385000.56 - 20905.355 * Math.cos(Mp) - 3699.111 * Math.cos(2 * D - Mp)
+             - 2955.968 * Math.cos(2 * D) - 569.925 * Math.cos(2 * Mp);
+  return { ra: ra, dec: dec, lon: norm(lon), D: D, Mp: Mp, dist: dist };
 }
 
 function longitudeSolar(date) {
@@ -132,20 +77,22 @@ function longitudeSolar(date) {
   return norm(L0 + C);
 }
 
-function idadeLua(date = new Date()) {
-  const a = diasJ2000(date.getTime() - NOVA_REF) % SINODICO;
+function idadeLua(date) {
+  const a = diasJ2000((date || new Date()).getTime() - NOVA_REF) % SINODICO;
   return a < 0 ? a + SINODICO : a;
 }
 
-/* Fase real: iluminação pela elongação Sol–Lua + direção (crescente/minguante) */
-function faseAgora(date = new Date()) {
-  const lua = posicaoLua(date);
-  const E = norm(lua.lon - longitudeSolar(date)); // elongação
+/* Fase pela elongação real Sol–Lua (igual aos apps de referência) */
+function faseAgora(date) {
+  const d = date || new Date();
+  const lua = posicaoLua(d);
+  const E = norm(lua.lon - longitudeSolar(d));   // 0=nova π=cheia
   return {
-    k: (1 - Math.cos(E)) / 2,       // fração iluminada (0..1)
-    waxing: E < Math.PI,            // true = crescente
-    E,
-    idade: idadeLua(date),
+    E: E,
+    k: (1 - Math.cos(E)) / 2,                    // fração iluminada
+    p: E / (2 * Math.PI),                        // 0..1 para desenhar
+    idx: Math.round(E / (Math.PI / 4)) % 8,
+    idade: idadeLua(d),
     dist: lua.dist
   };
 }
@@ -155,10 +102,10 @@ function gmstRad(date) {
 }
 
 function altitudeLua(date, lat, lon) {
-  const { ra, dec } = posicaoLua(date);
-  const H = gmstRad(date) + lon * RAD - ra;
+  const p = posicaoLua(date);
+  const H = gmstRad(date) + lon * RAD - p.ra;
   const fi = lat * RAD;
-  return Math.asin(Math.sin(fi) * Math.sin(dec) + Math.cos(fi) * Math.cos(dec) * Math.cos(H));
+  return Math.asin(Math.sin(fi) * Math.sin(p.dec) + Math.cos(fi) * Math.cos(p.dec) * Math.cos(H));
 }
 
 function interpolar(t1, t2, a1, a2) {
@@ -166,14 +113,13 @@ function interpolar(t1, t2, a1, a2) {
   return new Date(t1.getTime() + f * (t2.getTime() - t1.getTime()));
 }
 
-/* Nascer/pôr: janela de 3 dias, passo 5 min, primeiro evento a partir de agora */
+/* Próximo nascer e próxima queda a partir de agora (janela 2 dias) */
 function nascerESePorLua(lat, lon) {
   const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
-  const passo = 5 * 60000;
-  const passos = 3 * 24 * 12;
+  const passo = 10 * 60000;
   const subidas = [], descidas = [];
   let a1 = altitudeLua(inicio, lat, lon) - H0;
-  for (let i = 1; i <= passos; i++) {
+  for (let i = 1; i <= 288; i++) {
     const t = new Date(inicio.getTime() + i * passo);
     const a2 = altitudeLua(t, lat, lon) - H0;
     if (a1 < 0 && a2 >= 0) subidas.push(interpolar(new Date(t - passo), t, a1, a2));
@@ -181,7 +127,10 @@ function nascerESePorLua(lat, lon) {
     a1 = a2;
   }
   const agora = new Date();
-  const prox = arr => arr.find(d => d > agora) || null;
+  const prox = function (arr) {
+    for (let i = 0; i < arr.length; i++) if (arr[i] > agora) return arr[i];
+    return null;
+  };
   return { nascer: prox(subidas), sePor: prox(descidas) };
 }
 
@@ -193,107 +142,75 @@ function refLocal() {
 }
 
 /* ============================================================
-   LUA REALISTA (SVG) — corpo estático montado 1x + sombra dinâmica
+   LUA (SVG) — base + mares + crateras + fase (espelhada no sul)
    ============================================================ */
-const CIRCULO_P = r => `M 0 ${-r} A ${r} ${r} 0 1 1 0 ${r} A ${r} ${r} 0 1 1 0 ${-r} Z`;
-
-/* Caminho da região ILUMINADA (convenção hemisfério norte).
-   No sul aplicamos espelho scale(-1,1) só na sombra. */
-function caminhoLit(k, waxing, r) {
-  k = Math.min(1, Math.max(0, k));
-  const xw = r * (1 - 2 * k); // semi-eixo do terminador
-  const ax = Math.abs(xw).toFixed(2);
-  if (waxing)
-    return `M 0 ${-r} A ${r} ${r} 0 0 1 0 ${r} A ${ax} ${r} 0 0 ${xw > 0 ? 0 : 1} 0 ${-r} Z`;
-  return `M 0 ${-r} A ${r} ${r} 0 0 0 0 ${r} A ${ax} ${r} 0 0 ${xw > 0 ? 1 : 0} 0 ${-r} Z`;
+function caminhoFase(p, r) {
+  p = ((p % 1) + 1) % 1;
+  const c = Math.cos(2 * Math.PI * p);
+  const rx = Math.abs(c) * r;
+  if (p <= 0.5) {
+    const sw = c > 0 ? 1 : 0;
+    return 'M 0 ' + (-r) + ' A ' + r + ' ' + r + ' 0 0 1 0 ' + r +
+           ' A ' + rx + ' ' + r + ' 0 0 ' + sw + ' 0 ' + (-r) + ' Z';
+  }
+  const sw = c < 0 ? 1 : 0;
+  return 'M 0 ' + (-r) + ' A ' + r + ' ' + r + ' 0 0 0 0 ' + r +
+         ' A ' + rx + ' ' + r + ' 0 0 ' + sw + ' 0 ' + (-r) + ' Z';
 }
 
-/* "Mares" lunares aproximados (x, y, rx, ry, opacidade) */
 const MARIA = [
-  [-25,-45,30,23,.50],[35,-45,21,18,.45],[45,-15,21,17,.45],[72,-33,12,10,.50],
-  [60,10,14,12,.40],[42,24,11,9,.35],[-52,-8,24,34,.42],[-50,35,13,11,.45],
-  [-25,30,15,12,.40],[-30,6,11,9,.30],[8,-58,10,8,.25],[15,40,9,8,.25]
+  [-25,-45,30,23,.45],[35,-45,21,18,.40],[45,-15,21,17,.40],[72,-33,12,10,.45],
+  [60,10,14,12,.35],[42,24,11,9,.30],[-52,-8,24,34,.38],[-50,35,13,11,.40],
+  [-25,30,15,12,.35],[-30,6,11,9,.25],[8,-58,10,8,.20],[15,40,9,8,.20]
 ];
 const CRATERAS = [
-  [-45,-25,20,.16],[-28,-48,13,.13],[8,-58,9,.10],[38,-32,15,.15],
-  [58,6,11,.13],[22,22,23,.17],[-14,38,17,.14],[-52,26,9,.11],
-  [12,62,13,.12],[48,48,8,.11],[-4,-6,8,.13],[-62,-46,6,.09],
-  [64,-42,7,.09],[26,-12,6,.11],[-32,6,5,.11],[40,20,7,.12]
+  [-45,-25,20,.14],[-28,-48,13,.12],[8,-58,9,.09],[38,-32,15,.13],
+  [58,6,11,.12],[22,22,23,.15],[-14,38,17,.13],[-52,26,9,.10],
+  [12,62,13,.11],[48,48,8,.10],[-4,-6,8,.12],[-62,-46,6,.08],
+  [64,-42,7,.08],[26,-12,6,.10],[-32,6,5,.10],[40,20,7,.11]
 ];
 
-function svgEstrutura() {
+const craterasMarkup = CRATERAS.map(function (c) {
+  return '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + c[2] + '" fill="rgba(20,18,12,' + c[3] + ')"/>' +
+         '<circle cx="' + (c[0] - c[2] * .25) + '" cy="' + (c[1] - c[2] * .25) + '" r="' + (c[2] * .55) +
+         '" fill="rgba(255,255,250,' + (c[3] * .5) + ')"/>';
+}).join('');
+
+const mariaMarkup = MARIA.map(function (m) {
+  return '<ellipse cx="' + m[0] + '" cy="' + m[1] + '" rx="' + m[2] + '" ry="' + m[3] +
+         '" fill="#63676e" opacity="' + m[4] + '"/>';
+}).join('');
+
+function svgLua(p) {
   const r = 100;
-  const maria = MARIA.map(([x, y, rx, ry, o]) =>
-    `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#565b63" opacity="${o}"/>`).join('');
-  const crateras = CRATERAS.map(([x, y, cr, o]) =>
-    `<circle cx="${x}" cy="${y}" r="${cr}" fill="rgba(30,28,22,${(o * .55).toFixed(2)})"/>` +
-    `<circle cx="${x - cr * .3}" cy="${y - cr * .3}" r="${(cr * .5).toFixed(1)}" fill="rgba(255,255,245,${(o * .35).toFixed(2)})"/>`).join('');
-  return `<defs>
-    <radialGradient id="gLua" cx="42%" cy="40%" r="72%">
-      <stop offset="0%" stop-color="#f2efe4"/><stop offset="45%" stop-color="#cfccbf"/>
-      <stop offset="80%" stop-color="#a8a496"/><stop offset="100%" stop-color="#8b8779"/>
-    </radialGradient>
-    <radialGradient id="gLimbo" cx="50%" cy="50%" r="50%">
-      <stop offset="72%" stop-color="rgba(0,0,0,0)"/>
-      <stop offset="100%" stop-color="rgba(5,8,14,.45)"/>
-    </radialGradient>
-    <radialGradient id="gBrilho" cx="50%" cy="50%" r="50%">
-      <stop offset="62%" stop-color="rgba(255,255,240,0)"/>
-      <stop offset="93%" stop-color="rgba(255,255,235,.14)"/>
-      <stop offset="100%" stop-color="rgba(255,255,235,0)"/>
-    </radialGradient>
-    <clipPath id="clipLua"><circle r="${r}"/></clipPath>
-    <filter id="fB4" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="4.5"/></filter>
-    <filter id="fB1" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="1.4"/></filter>
-    <filter id="fRuido" x="-10%" y="-10%" width="120%" height="120%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="4" seed="7"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 .55  0 0 0 0 .55  0 0 0 0 .58  .9 .9 .9 0 -1.1"/>
-      <feComposite in2="SourceGraphic" operator="in"/>
-    </filter>
-    <filter id="fGrao" x="-10%" y="-10%" width="120%" height="120%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.5" numOctaves="2" seed="3"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  .5 .5 .5 0 -.6"/>
-      <feComposite in2="SourceGraphic" operator="in"/>
-    </filter>
-  </defs>
-  <circle r="${r + 9}" fill="url(#gBrilho)"/>
-  <circle r="${r}" fill="#0b0d12"/>
-  <g clip-path="url(#clipLua)">
-    <circle r="${r}" fill="url(#gLua)"/>
-    <g filter="url(#fB4)">${maria}
-      <circle cx="-8" cy="68" r="3.5" fill="#d9d6c8" opacity=".55"/>
-      <circle cx="-38" cy="-12" r="3" fill="#d9d6c8" opacity=".5"/>
-    </g>
-    <circle r="${r - 1}" fill="#000" filter="url(#fRuido)" opacity=".33"/>
-    <circle r="${r - 1}" fill="#000" filter="url(#fGrao)" opacity=".22"/>
-    <g opacity=".8">${crateras}</g>
-    <circle r="${r}" fill="url(#gLimbo)"/>
-    <path id="sombraP" d="" fill="#04060a" fill-opacity=".93" fill-rule="evenodd" filter="url(#fB1)"/>
-  </g>
-  <circle r="${r}" fill="none" stroke="rgba(255,255,255,.05)"/>`;
+  const lit = caminhoFase(p, r);
+  const esp = sulAtual ? ' transform="scale(-1 1)"' : '';
+  return '<defs>' +
+    '<radialGradient id="gLua" cx="40%" cy="38%" r="75%">' +
+      '<stop offset="0%" stop-color="#f4f1e6"/><stop offset="55%" stop-color="#d6d3c6"/>' +
+      '<stop offset="100%" stop-color="#9d998d"/></radialGradient>' +
+    '<radialGradient id="gBrilho" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="60%" stop-color="rgba(255,255,240,0)"/>' +
+      '<stop offset="92%" stop-color="rgba(255,255,235,.14)"/>' +
+      '<stop offset="100%" stop-color="rgba(255,255,235,0)"/></radialGradient>' +
+    '<clipPath id="clipLua"><circle r="' + r + '"/></clipPath>' +
+    '</defs>' +
+    '<circle r="' + (r + 9) + '" fill="url(#gBrilho)"/>' +
+    '<circle r="' + r + '" fill="#101014"/>' +
+    '<g clip-path="url(#clipLua)">' +
+      '<path d="' + lit + '" fill="url(#gLua)"' + esp + '/>' +
+      mariaMarkup + craterasMarkup +
+    '</g>' +
+    '<circle r="' + r + '" fill="none" stroke="rgba(255,255,255,.06)"/>';
 }
 
-let luaMontada = false;
-function montarLua() {
-  if (!luaMontada) { $('luaSvg').innerHTML = svgEstrutura(); luaMontada = true; }
-}
-function desenharFase(k, waxing, sul) {
-  montarLua();
-  const p = $('sombraP');
-  p.setAttribute('d', CIRCULO_P(100) + ' ' + caminhoLit(k, waxing, 100));
-  p.setAttribute('transform', sul ? 'scale(-1 1)' : '');
-}
-/* f = fração do ciclo (0..1) usado na prévia/arraste */
-function desenharLua(f) {
-  const fN = ((f % 1) + 1) % 1;
-  desenharFase((1 - Math.cos(2 * Math.PI * fN)) / 2, fN < 0.5, sulAtual);
-}
+function desenharLua(f) { $('luaSvg').innerHTML = svgLua(f); }
 
 /* ================= TELA LUA ================= */
 function fmtHora(d) {
   if (!d) return '—';
   const h = d.getHours(), m = String(d.getMinutes()).padStart(2, '0');
-  return `${h}:${m} ${h < 12 ? 'manhã' : h < 18 ? 'tarde' : 'noite'}`;
+  return h + ':' + m;
 }
 
 function atualizarCeu() {
@@ -307,57 +224,59 @@ function grupoFase(idx) { return idx === 0 ? 'nova' : idx < 4 ? 'crescente' : id
 
 function atualizarLua() {
   const agora = new Date();
-  const { k, waxing, E, idade, dist } = faseAgora(agora);
-  const idx = Math.floor(norm(E) / (Math.PI / 4) + 0.5) % 8;
-  const F = FASES[idx];
-  faseReal = idade / SINODICO;
+  const fa = faseAgora(agora);
+  const F = FASES[fa.idx];
+  faseReal = fa.p;
 
-  sulAtual = (refLocal().lat ?? 0) < 0; // hemisfério sul espelha a fase
+  sulAtual = refLocal().lat < 0;   // hemisfério sul espelha a fase
 
-  $('iluminacao').textContent = Math.round(k * 100) + '%';
+  $('iluminacao').textContent = Math.round(fa.k * 100) + '%';
   $('distancia').textContent =
-    dist.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km';
-  $('idade').textContent = `${Math.floor(idade)} dias`;
+    fa.dist.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km';
+  $('idade').textContent = Math.floor(fa.idade) + ' dias';
 
   const lua = posicaoLua(agora);
   const si = Math.floor(norm(lua.lon) / (Math.PI / 6)) % 12;
   const s = SIGNOS[si], n = SIGNOS[(si + 1) % 12];
-  $('sinal').innerHTML = `${s[0]} ${s[1]} → ${n[0]} ${n[1]}`;
+  $('sinal').innerHTML = s[0] + ' ' + s[1] + ' → ' + n[0] + ' ' + n[1];
 
   const interagindo = faseVisual !== null || rafAnim !== null || ponteiros.size > 0;
   if (!interagindo) {
-    desenharFase(k, waxing, sulAtual);
+    desenharLua(fa.p);
     $('nomeFase').textContent = F.nome;
   }
 
   const loc = refLocal();
-  const { nascer, sePor } = nascerESePorLua(loc.lat, loc.lon);
-  const amanha = d => d && d.getDate() !== agora.getDate() ? ' · amanhã' : '';
-  $('nascer').textContent = fmtHora(nascer) + amanha(nascer);
-  $('sePor').textContent  = fmtHora(sePor) + amanha(sePor);
+  const ev = nascerESePorLua(loc.lat, loc.lon);
+  const sufixo = function (d) {
+    return (d && d.getDate() !== agora.getDate()) ? ' amanhã' : '';
+  };
+  $('nascer').textContent = fmtHora(ev.nascer) + sufixo(ev.nascer);
+  $('sePor').textContent  = fmtHora(ev.sePor) + sufixo(ev.sePor);
   $('avisoLocal').textContent = loc.aproximado
-    ? '📍 Localização aproximada — ative o GPS na aba Clima para precisão.' : '';
+    ? '📍 Localização aproximada — permita o acesso nos Ajustes para precisão.' : '';
 
-  const g = grupoFase(idx);
-  document.querySelectorAll('[data-fase-card]')
-    .forEach(el => el.classList.toggle('agora', el.dataset.faseCard === g));
+  const g = grupoFase(fa.idx);
+  document.querySelectorAll('[data-fase-card]').forEach(function (el) {
+    el.classList.toggle('agora', el.dataset.faseCard === g);
+  });
 
-  const av = idx >= 5 ? 'otimo' : idx === 0 ? 'bom' : 'ruim';
+  const av = fa.idx >= 5 ? 'otimo' : fa.idx === 0 ? 'bom' : 'ruim';
   const m = MADEIRA[av];
   $('madeiraStatus').innerHTML =
-    `<div class="status-madeira" style="border-color:${m.cor}">
-       <div class="status-top"><span class="status-icone">${m.icone}</span>
-       <b style="color:${m.cor}">${m.titulo}</b></div>
-       <p>${m.texto}</p></div>`;
+    '<div class="status-madeira" style="border-color:' + m.cor + '">' +
+      '<div class="status-top"><span class="status-icone">' + m.icone + '</span>' +
+      '<b style="color:' + m.cor + '">' + m.titulo + '</b></div>' +
+      '<p>' + m.texto + '</p></div>';
 
   const alvos = [[0, FASES[0]], [SINODICO / 4, FASES[2]], [SINODICO / 2, FASES[4]], [3 * SINODICO / 4, FASES[6]]];
-  $('listaProximas').innerHTML = alvos.map(([alvo, f]) => {
-    let dias = alvo - idade;
+  $('listaProximas').innerHTML = alvos.map(function (al) {
+    let dias = al[0] - fa.idade;
     if (dias < 0.3) dias += SINODICO;
     const d = new Date(agora.getTime() + dias * DIA);
-    return `<div class="linha-prox"><span>${f.emoji} ${f.nome}</span>
-      <b>${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-       · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</b></div>`;
+    return '<div class="linha-prox"><span>' + al[1].emoji + ' ' + al[1].nome + '</span>' +
+      '<b>' + d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) +
+      ' · ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + '</b></div>';
   }).join('');
 }
 
@@ -371,8 +290,8 @@ const ponteiros = new Map();
 let arrasto = null;
 let pinca = null;
 
-const aplicarTransform = () => { $('luaSvg').style.transform = `scale(${escalaAtual})`; };
-function faseIdxDe(f) { return Math.floor((((f % 1) + 1) % 1) * 8 + 0.5) % 8; }
+const aplicarTransform = function () { $('luaSvg').style.transform = 'scale(' + escalaAtual + ')'; };
+function faseIdxDe(f) { return Math.round((((f % 1) + 1) % 1) * 8) % 8; }
 
 function atualizarPreview(f) {
   const fN = ((f % 1) + 1) % 1;
@@ -388,7 +307,7 @@ function animarFase(de, ate, dur, aoFim) {
     const f = de + (ate - de) * e;
     desenharLua(f); atualizarPreview(f);
     if (k < 1) rafAnim = requestAnimationFrame(passo);
-    else { rafAnim = null; aoFim && aoFim(); }
+    else { rafAnim = null; if (aoFim) aoFim(); }
   }
   rafAnim = requestAnimationFrame(passo);
 }
@@ -396,7 +315,7 @@ function animarFase(de, ate, dur, aoFim) {
 function voltarFaseReal() {
   const de = faseVisual;
   const delta = ((faseReal - de + 1.5) % 1) - 0.5;
-  animarFase(de, de + delta, 700, () => {
+  animarFase(de, de + delta, 700, function () {
     faseVisual = null;
     $('previewBadge').hidden = true;
     atualizarLua();
@@ -413,9 +332,9 @@ function voltarZoom() {
   })(t0);
 }
 
-luaWrap.addEventListener('contextmenu', e => e.preventDefault());
+luaWrap.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
-luaWrap.addEventListener('pointerdown', e => {
+luaWrap.addEventListener('pointerdown', function (e) {
   e.preventDefault();
   luaWrap.setPointerCapture(e.pointerId);
   ponteiros.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -424,19 +343,19 @@ luaWrap.addEventListener('pointerdown', e => {
     arrasto = { x0: e.clientX, t0: performance.now(), moveu: false,
                 baseFase: faseVisual !== null ? faseVisual : faseReal };
   } else if (ponteiros.size === 2) {
-    const [p1, p2] = [...ponteiros.values()];
-    pinca = { d0: Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1, escala0: escalaAtual };
+    const pts = Array.from(ponteiros.values());
+    pinca = { d0: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1, escala0: escalaAtual };
     arrasto = null;
   }
 });
 
-luaWrap.addEventListener('pointermove', e => {
+luaWrap.addEventListener('pointermove', function (e) {
   if (!ponteiros.has(e.pointerId)) return;
   ponteiros.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (ponteiros.size === 2 && pinca) {
-    const [p1, p2] = [...ponteiros.values()];
-    const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    const pts = Array.from(ponteiros.values());
+    const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     escalaAtual = Math.min(1.9, Math.max(0.7, pinca.escala0 * d / pinca.d0));
     aplicarTransform();
     return;
@@ -466,7 +385,7 @@ function soltar(e) {
       } else if (!arrasto.moveu && performance.now() - arrasto.t0 < 400 && faseVisual === null) {
         $('previewBadge').textContent = '🌕 Ciclo lunar…';
         $('previewBadge').hidden = false;
-        animarFase(faseReal, faseReal + 1, 4000, () => {
+        animarFase(faseReal, faseReal + 1, 4000, function () {
           faseVisual = null;
           $('previewBadge').hidden = true;
           $('previewBadge').textContent = '👁 Prévia — solte para voltar';
@@ -509,14 +428,16 @@ const PLANTIO = {
 };
 
 function renderPlantio() {
-  $('cardsPlantio').innerHTML = Object.entries(PLANTIO).map(([chave, p]) => `
-    <article class="card fase-card" data-fase-card="${chave}">
-      <header><span class="fc-emoji">${p.emoji}</span>
-        <div><h3>${p.titulo}</h3><p class="muted">${p.resumo}</p></div>
-        <span class="selo-agora">AGORA</span></header>
-      <h4>🌱 O que plantar</h4><ul>${p.plantar.map(i => `<li>${i}</li>`).join('')}</ul>
-      <h4>🛠️ Tarefas</h4><ul>${p.tarefas.map(i => `<li>${i}</li>`).join('')}</ul>
-    </article>`).join('');
+  $('cardsPlantio').innerHTML = Object.keys(PLANTIO).map(function (chave) {
+    const p = PLANTIO[chave];
+    return '<article class="card fase-card" data-fase-card="' + chave + '">' +
+      '<header><span class="fc-emoji">' + p.emoji + '</span>' +
+        '<div><h3>' + p.titulo + '</h3><p class="muted">' + p.resumo + '</p></div>' +
+        '<span class="selo-agora">AGORA</span></header>' +
+      '<h4>🌱 O que plantar</h4><ul>' + p.plantar.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>' +
+      '<h4>🛠️ Tarefas</h4><ul>' + p.tarefas.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>' +
+      '</article>';
+  }).join('');
 }
 
 /* ================= MADEIRA ================= */
@@ -538,8 +459,10 @@ const USOS_MADEIRA = [
 ];
 
 function renderMadeira() {
-  $('usosMadeira').innerHTML = USOS_MADEIRA.map(([ic, t, d]) =>
-    `<div class="uso"><span class="uso-ic">${ic}</span><div><b>${t}</b><p class="muted">${d}</p></div></div>`).join('');
+  $('usosMadeira').innerHTML = USOS_MADEIRA.map(function (u) {
+    return '<div class="uso"><span class="uso-ic">' + u[0] + '</span><div><b>' + u[1] +
+           '</b><p class="muted">' + u[2] + '</p></div></div>';
+  }).join('');
 }
 
 /* ================= CLIMA ================= */
@@ -552,9 +475,9 @@ const WMO = { 0:['Céu limpo','☀️'],1:['Predomínio de sol','🌤️'],2:['P
 const wmo = c => WMO[c] || ['—', '🌡️'];
 
 async function obterClima(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
-    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation,is_day` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=auto`;
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(4) + '&longitude=' + lon.toFixed(4) +
+    '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation,is_day' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=auto';
   const r = await fetch(url);
   if (!r.ok) throw new Error('falha clima');
   return r.json();
@@ -562,47 +485,43 @@ async function obterClima(lat, lon) {
 
 async function nomeCidade(lat, lon) {
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&accept-language=pt-BR`);
+    const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=16&accept-language=pt-BR');
     const j = await r.json();
     const a = j.address || {};
     const local = a.city || a.town || a.village || a.municipality || a.hamlet || a.suburb || a.neighbourhood || a.county || '';
     const iso = a['ISO3166-2-lvl4'] || '';
-    const uf = iso.includes('-') ? iso.split('-')[1] : '';
-    if (local) return `${local}${uf ? ' - ' + uf : ''}`;
+    const uf = iso.indexOf('-') > -1 ? iso.split('-')[1] : '';
+    if (local) return local + (uf ? ' - ' + uf : '');
   } catch (_) {}
   try {
-    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=pt`);
+    const r = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=pt');
     const j = await r.json();
     return j.city || j.locality || j.principalSubdivision || '';
   } catch (_) { return ''; }
 }
 
 function mostrarClima(dados, cidade) {
-  const c = dados.current, [desc, ic] = wmo(c.weather_code);
+  const c = dados.current, w = wmo(c.weather_code);
   $('climaAtual').hidden = false;
-  $('climaAtual').innerHTML = `
-    <div class="clima-top">
-      <div>
-        <div class="clima-cidade">📍 ${cidade || 'Sua região'}</div>
-        <div class="clima-temp">${Math.round(c.temperature_2m)}°C</div>
-        <div class="clima-desc">${ic} ${desc}</div>
-      </div>
-      <div class="clima-ic-grande">${c.is_day ? ic : (c.weather_code === 0 ? '🌙' : ic)}</div>
-    </div>
-    <div class="clima-grid">
-      <div><span>Sensação</span><b>${Math.round(c.apparent_temperature)}°</b></div>
-      <div><span>Umidade</span><b>${c.relative_humidity_2m}%</b></div>
-      <div><span>Vento</span><b>${Math.round(c.wind_speed_10m)} km/h</b></div>
-      <div><span>Chuva</span><b>${c.precipitation ?? 0} mm</b></div>
-    </div>`;
+  $('climaAtual').innerHTML =
+    '<div class="clima-top"><div>' +
+      '<div class="clima-cidade">📍 ' + (cidade || 'Sua região') + '</div>' +
+      '<div class="clima-temp">' + Math.round(c.temperature_2m) + '°C</div>' +
+      '<div class="clima-desc">' + w[1] + ' ' + w[0] + '</div></div>' +
+      '<div class="clima-ic-grande">' + (c.is_day ? w[1] : (c.weather_code === 0 ? '🌙' : w[1])) + '</div></div>' +
+    '<div class="clima-grid">' +
+      '<div><span>Sensação</span><b>' + Math.round(c.apparent_temperature) + '°</b></div>' +
+      '<div><span>Umidade</span><b>' + c.relative_humidity_2m + '%</b></div>' +
+      '<div><span>Vento</span><b>' + Math.round(c.wind_speed_10m) + ' km/h</b></div>' +
+      '<div><span>Chuva</span><b>' + (c.precipitation != null ? c.precipitation : 0) + ' mm</b></div></div>';
   $('previsao').hidden = false;
-  $('previsao').innerHTML = dados.daily.time.map((t, i) => {
-    const [, di] = wmo(dados.daily.weather_code[i]);
+  $('previsao').innerHTML = dados.daily.time.map(function (t, i) {
+    const dw = wmo(dados.daily.weather_code[i]);
     const dia = new Date(t + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short' });
-    return `<div class="prev-card"><b>${dia}</b><div class="prev-ic">${di}</div>
-      <div class="prev-temp">${Math.round(dados.daily.temperature_2m_max[i])}°
-       <span class="muted">${Math.round(dados.daily.temperature_2m_min[i])}°</span></div>
-      <div class="muted pequeno">💧 ${dados.daily.precipitation_probability_max[i] ?? 0}%</div></div>`;
+    return '<div class="prev-card"><b>' + dia + '</b><div class="prev-ic">' + dw[1] + '</div>' +
+      '<div class="prev-temp">' + Math.round(dados.daily.temperature_2m_max[i]) + '° ' +
+      '<span class="muted">' + Math.round(dados.daily.temperature_2m_min[i]) + '°</span></div>' +
+      '<div class="muted pequeno">💧 ' + (dados.daily.precipitation_probability_max[i] != null ? dados.daily.precipitation_probability_max[i] : 0) + '%</div></div>';
   }).join('');
 }
 
@@ -611,9 +530,8 @@ async function carregarClima(lat, lon, cidade) {
   try {
     const dados = await obterClima(lat, lon);
     mostrarClima(dados, cidade);
-    localStorage.setItem('fdl_clima', JSON.stringify({ t: Date.now(), cidade, dados }));
-    $('localStatus').textContent = cidade ? `${cidade} · ${lat.toFixed(4)}, ${lon.toFixed(4)}`
-                                          : `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    localStorage.setItem('fdl_clima', JSON.stringify({ t: Date.now(), cidade: cidade, dados: dados }));
+    $('localStatus').textContent = (cidade ? cidade + ' · ' : '') + lat.toFixed(4) + ', ' + lon.toFixed(4);
   } catch (_) {
     const salvo = localStorage.getItem('fdl_clima');
     if (salvo) { const s = JSON.parse(salvo); mostrarClima(s.dados, s.cidade); }
@@ -622,31 +540,31 @@ async function carregarClima(lat, lon, cidade) {
 }
 
 function definirLocal(lat, lon, cidade, precisao) {
-  LOCAL = { lat, lon, cidade: cidade || '' };
+  LOCAL = { lat: lat, lon: lon, cidade: cidade || '' };
   localStorage.setItem('fdl_local', JSON.stringify(LOCAL));
   atualizarLua();
   if (precisao != null) {
     $('localStatus').textContent =
-      `📡 GPS do aparelho: ±${Math.round(precisao)} m ${cidade ? '· ' + cidade : ''}`;
+      '📡 GPS do aparelho: ±' + Math.round(precisao) + ' m' + (cidade ? ' · ' + cidade : '');
   }
   carregarClima(lat, lon, LOCAL.cidade);
 }
 
-function pedirGPS(silencioso) {
+function pedirGPS(mostrarStatus) {
   if (!navigator.geolocation) {
-    if (!silencioso) $('localStatus').textContent = 'Seu navegador não suporta GPS.';
+    if (mostrarStatus) $('localStatus').textContent = 'Seu navegador não suporta GPS.';
     return;
   }
-  if (!silencioso) $('localStatus').textContent = '📡 Obtendo localização do dispositivo…';
-  navigator.geolocation.getCurrentPosition(async pos => {
-    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+  if (mostrarStatus) $('localStatus').textContent = '📡 Obtendo localização do dispositivo…';
+  navigator.geolocation.getCurrentPosition(async function (pos) {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
     const cidade = await nomeCidade(lat, lon);
-    definirLocal(lat, lon, cidade, accuracy);
-  }, err => {
+    definirLocal(lat, lon, cidade, pos.coords.accuracy);
+  }, function (err) {
     const msgs = {
-      1: '🚫 Permissão negada — toque no cadeado 🔒 na barra de endereço → Localização → Permitir.',
-      2: '📡 Sem sinal — verifique se o GPS (Localização) do aparelho está ATIVADO nas configurações.',
-      3: '⏱️ Tempo esgotado — tente de novo em local aberto (céu visível).'
+      1: '🚫 Permissão negada — toque no cadeado 🔒 do endereço → Localização → Permitir.',
+      2: '📡 Sem sinal — ative a Localização do aparelho nas configurações rápidas.',
+      3: '⏱️ Tempo esgotado — tente de novo em local aberto.'
     };
     $('localStatus').textContent = msgs[err.code] || 'Erro ao obter localização.';
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
@@ -656,11 +574,11 @@ async function gpsAutomatico() {
   try {
     const st = await navigator.permissions.query({ name: 'geolocation' });
     if (st.state === 'denied') {
-      $('avisoLocal').textContent = '📍 Localização bloqueada — permita no navegador para horários e clima precisos.';
+      $('avisoLocal').textContent = '📍 Localização bloqueada — permita no navegador para precisão.';
       return;
     }
   } catch (_) {}
-  pedirGPS(true);
+  pedirGPS(false);
 }
 
 async function buscarCidade() {
@@ -668,228 +586,94 @@ async function buscarCidade() {
   if (!nome) return;
   $('localStatus').textContent = '🔎 Buscando…';
   try {
-    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(nome)}&count=1&language=pt&format=json`);
+    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(nome) + '&count=1&language=pt&format=json');
     const j = await r.json();
     if (!j.results || !j.results.length) { $('localStatus').textContent = 'Cidade não encontrada.'; return; }
-    const { latitude, longitude, name, admin1, country } = j.results[0];
-    definirLocal(latitude, longitude, `${name}${admin1 ? ' - ' + admin1 : ''}${country ? ', ' + country : ''}`);
+    const res = j.results[0];
+    definirLocal(res.latitude, res.longitude,
+      res.name + (res.admin1 ? ' - ' + res.admin1 : '') + (res.country ? ', ' + res.country : ''));
   } catch (_) { $('localStatus').textContent = 'Erro na busca (sem internet?).'; }
 }
  $('btnBuscar').addEventListener('click', buscarCidade);
- $('inpCidade').addEventListener('keydown', e => { if (e.key === 'Enter') buscarCidade(); });
- $('btnGps').addEventListener('click', () => pedirGPS(false));
+ $('inpCidade').addEventListener('keydown', function (e) { if (e.key === 'Enter') buscarCidade(); });
 
 /* ============================================================
-   ⬇️ INSTALAÇÃO — some na hora em que o app é instalado
+   ⬇️ INSTALAÇÃO — aparece ao abrir na web, some quando instalado
    ============================================================ */
-const ID_DO_APP = 'fases-da-lua-v5';
-
-let deferredPrompt = null;
-let resolverPrompt = null;
 const btnInstalar = $('btnInstalar');
+let deferredPrompt = null;
 
-const rodandoComoApp = () =>
-  window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const rodandoComoApp = function () {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+};
 
-async function appsInstalados() {
-  try {
-    if (navigator.getInstalledRelatedApps) return await navigator.getInstalledRelatedApps();
-  } catch (_) {}
-  return [];
-}
-const ehEsteApp = a => (a.id || '').includes(ID_DO_APP) || (a.url || '').includes(ID_DO_APP);
+function atualizarBotaoInstalar() { btnInstalar.hidden = rodandoComoApp(); }
+atualizarBotaoInstalar();   // na abertura: mostra na web, esconde no app
 
-async function atualizarBotaoInstalar() {
-  if (rodandoComoApp()) { btnInstalar.hidden = true; return; }
-  const apps = await appsInstalados();
-  btnInstalar.hidden = apps.some(ehEsteApp);
-}
-
-async function tentarInstalar() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    return true;
-  }
-  const veio = await Promise.race([
-    new Promise(r => { resolverPrompt = () => r(true); setTimeout(() => r(false), 6000); })
-  ]);
-  if (veio && deferredPrompt) {
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    return true;
-  }
-  return false;
-}
-
-btnInstalar.addEventListener('click', async () => {
-  btnInstalar.hidden = true;
-  const ok = await tentarInstalar();
-  if (ok) return;
-  btnInstalar.hidden = false;
-  abrirDiag();
-});
-
-window.addEventListener('beforeinstallprompt', e => {
+window.addEventListener('beforeinstallprompt', function (e) {
   e.preventDefault();
   deferredPrompt = e;
   if (!rodandoComoApp()) btnInstalar.hidden = false;
-  if (resolverPrompt) { resolverPrompt(); resolverPrompt = null; }
 });
 
-window.addEventListener('appinstalled', () => {
+btnInstalar.addEventListener('click', async function () {
+  if (rodandoComoApp()) { btnInstalar.hidden = true; return; }
+  if (!deferredPrompt) {
+    mostrarToast('⏳ Preparando instalação… aguarde e toque de novo.');
+    await new Promise(function (r) { setTimeout(r, 4000); });
+    if (!deferredPrompt) {
+      mostrarToast('Usue o menu ⋮ do Chrome → "Instalar app".', 6000);
+      return;
+    }
+  }
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+});
+
+window.addEventListener('appinstalled', function () {
   deferredPrompt = null;
   btnInstalar.hidden = true;
-  $('diagInstalar').hidden = true;
-  fecharDiag();
-  mostrarToast('✅ App instalado! Abra pelo ícone 🌒 na tela inicial.');
+  mostrarToast('✅ App instalado! Abra pelo ícone 🌒 da tela inicial.');
 });
 
-document.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', function () {
   if (!document.hidden) atualizarBotaoInstalar();
 });
 
-/* ============================================================
-   🔧 DIAGNÓSTICO
-   ============================================================ */
-const diagOverlay = $('diagOverlay');
+/* ================= NAVEGAÇÃO / ESTRELAS / PWA ================= */
+document.querySelectorAll('.tab').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('ativo', x === b); });
+    document.querySelectorAll('.tab-page').forEach(function (s) { s.classList.toggle('ativo', s.id === b.dataset.tab); });
+    window.scrollTo({ top: 0 });
+  });
+});
 
-function abrirDiag() {
-  diagOverlay.hidden = false;
-  $('diagLista').innerHTML = '';
-  $('diagVeredito').textContent = '🔎 Executando verificações…';
-  $('diagInstalar').hidden = rodandoComoApp();
-  executarDiagnostico()
-    .catch(e => {
-      $('diagVeredito').textContent =
-        '⚠️ O diagnóstico não conseguiu terminar (' + (e && e.message ? e.message : e) + ').\n\n' +
-        'Mas os botões funcionam. Toque em "⬇ Tentar instalar agora" ou em Fechar.';
-    });
-}
-function fecharDiag() { diagOverlay.hidden = true; }
-
- $('btnDiag').addEventListener('click', abrirDiag);
- $('diagFechar').addEventListener('click', fecharDiag);
-diagOverlay.addEventListener('click', e => { if (e.target === diagOverlay) fecharDiag(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharDiag(); });
-
-function linhaDiag(estado, titulo, detalhe) {
-  const ic = estado === 'ok' ? '✅' : estado === 'alerta' ? '⚠️' : '❌';
-  return `<div class="diag-item ${estado}">
-    <span class="ic">${ic}</span>
-    <div><b>${titulo}</b><p>${detalhe}</p></div></div>`;
+function criarEstrelas() {
+  for (let i = 0; i < 90; i++) {
+    const s = document.createElement('i');
+    s.style.cssText = 'left:' + (Math.random() * 100) + '%;top:' + (Math.random() * 100) + '%;' +
+      'width:' + (1 + Math.random() * 1.6) + 'px;height:' + (1 + Math.random() * 1.6) + 'px;' +
+      'animation-duration:' + (2 + Math.random() * 4) + 's;animation-delay:' + (Math.random() * 4) + 's';
+    $('ceu').appendChild(s);
+  }
 }
 
-async function executarDiagnostico() {
-  const itens = [];
-  const add = (cond, titulo, ok, alerta, erro) =>
-    itens.push(linhaDiag(cond ? 'ok' : (alerta ? 'alerta' : 'erro'), titulo, cond ? ok : (erro || alerta)));
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 
-  const seguro = location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
-  add(seguro, 'Conexão segura (HTTPS)',
-    'Servido via HTTPS — requisito atendido.', null,
-    `Está em "${location.protocol}//" — o navegador SÓ instala via HTTPS ou localhost.`);
+/* ================= INICIALIZAÇÃO ================= */
+criarEstrelas();
+renderPlantio();
+renderMadeira();
+atualizarCeu();
+atualizarLua();
+setInterval(atualizarCeu, 1000);
+setInterval(atualizarLua, 60000);
 
-  let reg = null;
-  try { reg = await navigator.serviceWorker.getRegistration(); } catch (_) {}
-  const swOk = !!reg;
-  add(swOk, 'Service Worker registrado',
-    swOk ? 'sw.js registrado com sucesso.' : null, null,
-    'sw.js não encontrado. Confira se o arquivo sw.js está na MESMA pasta do index.html no GitHub.');
-
-  const controlando = !!(navigator.serviceWorker.controller || (reg && reg.active));
-  add(controlando, 'Service Worker ativo',
-    controlando ? 'Ativo e controlando o app.' : null,
-    'Registrado mas ainda assumindo o controle — feche e reabra o app.',
-    'Sem Service Worker ativo — requisito obrigatório para instalar.');
-
-  let man = null, manErro = '';
-  try {
-    const r = await fetch('manifest.json', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    man = await r.json();
-  } catch (e) { manErro = e.message; }
-  add(!!man, 'manifest.json carregado',
-    man ? `"${man.name || 'sem nome'}" — válido.` : null, null,
-    `Falhou: ${manErro}. Confira se o arquivo se chama exatamente manifest.json e é um JSON válido.`);
-
-  if (man) {
-    const idUnico = man.id && man.id.includes(ID_DO_APP);
-    add(idUnico, 'Identidade única do app (anti-conflito)',
-      `id: "${man.id}" · start_url: "${man.start_url}" — não colide com apps antigos deste site.`, null,
-      `O manifest não tem o id novo "${ID_DO_APP}". Substitua o manifest.json pela versão nova.`);
-
-    const camposOk = !!(man.name && man.start_url != null && man.display && man.id &&
-                        Array.isArray(man.icons) && man.icons.length >= 1);
-    add(camposOk, 'Campos obrigatórios do manifest',
-      'name, id, start_url, display e icons presentes.', null,
-      'Faltam campos obrigatórios. Substitua o manifest.json pela versão nova.');
-  }
-
-  let iconesOk = false;
-  if (man && Array.isArray(man.icons)) {
-    const resultados = [];
-    for (const ic of man.icons) {
-      try {
-        const url = new URL(ic.src, location.href).href;
-        const img = new Image();
-        img.src = url;
-        await img.decode();
-        resultados.push(true);
-      } catch (_) { resultados.push(false); }
-    }
-    iconesOk = resultados.some(Boolean);
-    add(iconesOk, 'Ícones carregam corretamente',
-      `${resultados.filter(Boolean).length}/${resultados.length} ícones OK (inclusive PNG 192/512).`, null,
-      'Nenhum ícone carregou. Gere os PNGs com gerar-icones.html e suba icon-192.png e icon-512.png na pasta.');
-  } else {
-    itens.push(linhaDiag('erro', 'Ícones carregam corretamente', 'Sem icons no manifest — impossível instalar.'));
-  }
-
-  const suporta = 'onbeforeinstallprompt' in window || 'serviceWorker' in navigator;
-  add(suporta, 'Navegador suporta instalação PWA',
-    'Chrome/Edge detectado com suporte.', null,
-    'Este navegador não suporta instalação. Use o Google Chrome no Android.');
-
-  const standalone = rodandoComoApp();
-  itens.push(linhaDiag(standalone ? 'ok' : 'alerta', 'Modo de execução',
-    standalone ? '✨ Você está DENTRO do app instalado (standalone). Tudo certo!'
-               : 'Você está abrindo pelo navegador (aba do Chrome), NÃO pelo app instalado.'));
-
-  const apps = await appsInstalados();
-  const esteInstalado = apps.some(ehEsteApp);
-  const idDetectado = apps.length ? (apps[0].id || apps[0].url || '(sem id)') : '';
-
-  if (!apps.length) {
-    itens.push(linhaDiag('ok', 'Instalação livre',
-      'O Chrome NÃO considera este app instalado — pode instalar normalmente.'));
-  } else if (esteInstalado) {
-    itens.push(linhaDiag('ok', 'Este app já está instalado',
-      `📦 Detectado id "${idDetectado}" — é este app mesmo. Abra pelo ícone 🌒 na tela inicial.`));
-  } else {
-    itens.push(linhaDiag('alerta', '⚠️ CONFLITO: outro app antigo ocupa este site',
-      `O Chrome detecta instalado um app com id "${idDetectado}" — este NÃO é o app novo. ` +
-      `Com a identidade nova (v5) o Chrome aceita instalar este app separadamente.`));
-  }
-
-  $('diagLista').innerHTML = itens.join('');
-
-  const veredito = $('diagVeredito');
-  let texto;
-  if (standalone) {
-    texto = '🎉 TUDO CERTO!\nVocê está usando o app instalado. O botão "Instalar" fica escondido porque não é mais necessário.';
-  } else if (esteInstalado) {
-    texto = '📦 ESTE APP JÁ ESTÁ INSTALADO NESTE APARELHO!\n\n' +
-      '1. Feche o Chrome.\n2. Vá à tela inicial / gaveta de apps.\n' +
-      '3. Procure o ícone 🌒 "Fases da Lua" e abra por ele.';
-  } else if (apps.length) {
-    texto = '🧩 APP FANTASMA DETECTADO\n\n' +
-      'Um app ANTIGO deste site está registrado no Chrome (por isso ele diz "já instalado").\n\n' +
-      'Com os arquivos v5 (manifest com id único) este app novo instala separado:\n' +
-      '• Toque em "⬇ Tentar instalar agora" acima.\n\n' +
-      'OPCIONAL (limpar o fantasma):\n' +
-      '• Digite chrome://webapks no Chrome para ver a lista.\n' +
-      '• Ajustes do celular > Apps > app antigo > Desinstalar.';
-  } else if (seguro && swOk && controlando && man && iconesOk) {
+if (LOCAL && LOCAL.lat != null) {
+  $('localStatus').textContent = LOCAL.cidade || (LOCAL.lat.toFixed(4) + ', ' + LOCAL.lon.toFixed(4));
+  const salvo = localStorage.getItem('fdl_clima');
+  if (salvo) { const s = JSON.parse(salvo); mostrarClima(s.dados, s.cidade); }
+}
+gpsAutomatico();
