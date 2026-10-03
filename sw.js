@@ -1,5 +1,5 @@
-/* Service Worker — Fases da Lua (v9) */
-const CACHE = 'fases-da-lua-v9';
+/* Service Worker — Fases da Lua (v10) */
+const CACHE = 'fases-da-lua-v10';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -27,7 +27,6 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  /* APIs de clima/cidade: rede primeiro, cache só offline */
   const ehApi = ['open-meteo', 'bigdatacloud', 'nominatim'].some(function (h) { return url.hostname.includes(h); });
   if (ehApi) {
     e.respondWith(
@@ -40,7 +39,6 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  /* Ícones: cache primeiro (nunca mudam) */
   if (url.pathname.includes('icon')) {
     e.respondWith(
       caches.match(req).then(function (c) {
@@ -54,7 +52,6 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  /* HTML, JS, manifest: REDE primeiro — garante versão nova — cache no offline */
   e.respondWith(
     fetch(req).then(function (resp) {
       if (resp.ok) {
