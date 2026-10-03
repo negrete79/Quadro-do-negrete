@@ -14,6 +14,7 @@
 <title>Fases da Lua</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#04060b;color:#eef2f7;
 min-height:100dvh;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
@@ -113,6 +114,10 @@ background:#ffffff08;margin-bottom:8px;align-items:flex-start}
 #diagVeredito{border-left:3px solid #4db6ff;background:#4db6ff14;padding:12px;border-radius:10px;
 font-size:.9rem;margin:12px 0;white-space:pre-line}
 .diag-acoes{display:grid;gap:8px}
+/* ---- toast ---- */
+#toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
+z-index:60;background:#37c978;color:#04170c;font-weight:800;font-size:.85rem;padding:12px 18px;
+border-radius:999px;box-shadow:0 6px 24px #000a;max-width:92vw;text-align:center}
 /* ---- navegação ---- */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:9;display:flex;background:#0d1320f5;
 border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
@@ -206,7 +211,7 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
   <div class="diag-box" role="dialog" aria-modal="true">
     <h3>🔧 Diagnóstico do app</h3>
     <div id="diagLista"></div>
-    <div id="diagVeredito">Executando verificações…</div>
+    <div id="diagVeredito">🔎 Executando verificações…</div>
     <div class="diag-acoes">
       <button id="diagInstalar" class="btn-primario">⬇ Tentar instalar agora</button>
       <button id="diagFechar" class="btn-sec">Fechar</button>
