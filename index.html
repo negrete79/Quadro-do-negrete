@@ -20,7 +20,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 #ceu i{position:fixed;background:#fff;border-radius:50%;opacity:.3;animation:piscar 3s infinite;z-index:0;pointer-events:none}
 @keyframes piscar{0%,100%{opacity:.12}50%{opacity:.6}}
 #erroBarra{position:fixed;top:0;left:0;right:0;z-index:99;background:#b3261e;color:#fff;
-font-size:.75rem;padding:8px 12px;word-break:break-word}
+font-size:.75rem;padding:8px 12px;word-break:break-word;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:10px;
 padding:14px 18px;background:#111722e8;backdrop-filter:blur(8px);border-bottom:1px solid #ffffff14}
 h1{font-size:1.25rem}
@@ -132,7 +132,7 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
       <div class="stat"><span>Sinal da Lua</span><b id="sinal">—</b></div>
     </div>
     <div class="card"><h3>⏭️ Próximas fases</h3><div id="listaProximas"></div></div>
-    <p class="versao">Fases da Lua · v9</p>
+    <p class="versao">Fases da Lua · v11</p>
   </section>
 
   <section id="plantio" class="tab-page">
@@ -176,6 +176,43 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
   <button class="tab" data-tab="clima"><span class="icone">⛅</span><span>Clima</span></button>
 </nav>
 
-<script src="app.js" defer></script>
+<!-- Vigia: captura QUALQUER erro (inclusive do app.js) e oferece reparo -->
+<script>
+window.__FDL_ERRO = function (msg) {
+  var b = document.getElementById('erroBarra');
+  if (!b) return;
+  b.hidden = false;
+  b.textContent = '';
+  var t = document.createElement('span');
+  t.textContent = '⚠️ ' + msg;
+  b.appendChild(t);
+  var btn = document.createElement('button');
+  btn.textContent = '🛠️ Limpar e recarregar';
+  btn.style.cssText = 'background:#fff;color:#b3261e;font-weight:700;border:0;border-radius:999px;padding:4px 12px';
+  btn.onclick = async function () {
+    try { var ks = await caches.keys(); ks.forEach(function (k) { caches.delete(k); }); } catch (e) {}
+    try {
+      var rs = await navigator.serviceWorker.getRegistrations();
+      rs.forEach(function (x) { x.unregister(); });
+    } catch (e) {}
+    location.href = location.pathname + '?r=' + Date.now();
+  };
+  b.appendChild(btn);
+};
+window.addEventListener('error', function (e) {
+  window.__FDL_ERRO((e && e.message) ? e.message : 'Erro desconhecido no script');
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e.reason;
+  window.__FDL_ERRO((r && r.message) ? r.message : String(r));
+});
+setTimeout(function () {
+  if (!window.__FDL_OK) {
+    window.__FDL_ERRO('O app não iniciou — o app.js não carregou (confira se subiu no GitHub com o nome exato "app.js"). Toque para limpar e recarregar.');
+  }
+}, 4000);
+</script>
+
+<script src="app.js?v=11" defer></script>
 </body>
 </html>
