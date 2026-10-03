@@ -1,5 +1,5 @@
-/* Service Worker — Fases da Lua (v10) */
-const CACHE = 'fases-da-lua-v10';
+/* Service Worker — Fases da Lua (v11) */
+const CACHE = 'fases-da-lua-v11';
 const PRECACHE = ['./', './index.html', './app.js', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -31,8 +31,10 @@ self.addEventListener('fetch', function (e) {
   if (ehApi) {
     e.respondWith(
       fetch(req).then(function (resp) {
-        const cp = resp.clone();
-        caches.open(CACHE).then(function (c) { c.put(req, cp); });
+        if (resp && resp.ok) {
+          const cp = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put(req, cp); });
+        }
         return resp;
       }).catch(function () { return caches.match(req); })
     );
@@ -41,26 +43,26 @@ self.addEventListener('fetch', function (e) {
 
   if (url.pathname.includes('icon')) {
     e.respondWith(
-      caches.match(req).then(function (c) {
-        return c || fetch(req).then(function (resp) {
-          const cp = resp.clone();
-          caches.open(CACHE).then(function (x) { x.put(req, cp); });
-          return resp;
-        });
+      caches.match(req, { ignoreSearch: true }).then(function (c) {
+        return c || fetch(req);
       })
     );
     return;
   }
 
+  /* Rede primeiro; se a resposta não for válida (ex.: 404) usa o cache */
   e.respondWith(
     fetch(req).then(function (resp) {
-      if (resp.ok) {
+      if (resp && resp.ok) {
         const cp = resp.clone();
         caches.open(CACHE).then(function (c) { c.put(req, cp); });
+        return resp;
       }
-      return resp;
+      return caches.match(req, { ignoreSearch: true })
+        .then(function (c) { return c || resp; });
     }).catch(function () {
-      return caches.match(req).then(function (c) { return c || caches.match('./index.html'); });
+      return caches.match(req, { ignoreSearch: true })
+        .then(function (c) { return c || caches.match('./index.html', { ignoreSearch: true }); });
     })
   );
 });
