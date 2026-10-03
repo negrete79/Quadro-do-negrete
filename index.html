@@ -146,7 +146,7 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
       <div class="stat"><span>Sinal da Lua</span><b id="sinal">—</b></div>
     </div>
     <div class="card"><h3>⏭️ Próximas fases</h3><div id="listaProximas"></div></div>
-    <p class="versao">Fases da Lua · v15</p>
+    <p class="versao">Fases da Lua · v17 · tempo real</p>
   </section>
 
   <!-- ============ ABA PLANTIO ============ -->
@@ -229,7 +229,10 @@ setTimeout(function () {
 
 <script>
 /* ============================================================
-   FASES DA LUA — v15 (edição final)
+   FASES DA LUA — v17 (edição definitiva)
+   Iluminação e fase em TEMPO REAL: elongação Sol–Lua calculada
+   a cada minuto com a posição real dos astros. O número, o
+   desenho e o nome da fase usam a MESMA fração p.
    Seções: 1.Config 2.Utilidades 3.Astronomia 4.Desenho
            5.Tela 6.Lua interativa 7.Plantio 8.Madeira
            9.Clima 10.GPS 11.Instalação 12.Navegação 13.Boot
@@ -237,9 +240,9 @@ setTimeout(function () {
 'use strict';
 
 /* ================= 1. CONFIGURAÇÃO ================= */
-const SINODICO = 29.530588853;                    /* ciclo lunar: 29,53 dias        */
-const J2000    = Date.UTC(2000, 0, 1, 12);        /* época astronômica              */
-const NOVA_REF = Date.UTC(2000, 0, 6, 18, 14);    /* lua nova de referência         */
+const SINODICO = 29.530588853;                    /* ciclo lunar: 29,53 dias            */
+const J2000    = Date.UTC(2000, 0, 1, 12);        /* época astronômica                  */
+const NOVA_REF = Date.UTC(2000, 0, 6, 18, 14);    /* lua nova de referência (idade)     */
 const RAD = Math.PI / 180;
 const DIA = 86400000;
 const H0  = 0.125 * RAD;                          /* altitude do nascer/pôr (refração + paralaxe) */
@@ -299,26 +302,36 @@ function posicaoLua(date) {
   return { ra: ra, dec: dec, lon: norm(lon), dist: dist };
 }
 
-/* Idade da Lua em dias (0 = lua nova) — horário LOCAL do aparelho */
+/* Longitude eclíptica do Sol */
+function longitudeSolar(date) {
+  const T = diasJ2000(date.getTime()) / 36525;
+  const L0 = (280.46646 + 36000.76983 * T) * RAD;
+  const M  = (357.52911 + 35999.05029 * T) * RAD;
+  const C  = (1.914602 * Math.sin(M) + 0.019993 * Math.sin(2 * M) + 0.000289 * Math.sin(3 * M)) * RAD;
+  return norm(L0 + C);
+}
+
+/* Idade da Lua em dias (0 = lua nova) — diferença de timestamps: imune a fuso */
 function idadeLua(date) {
   const a = (((date || new Date()).getTime() - NOVA_REF) / DIA) % SINODICO;
   return a < 0 ? a + SINODICO : a;
 }
 
-/* Fase atual.
-   Iluminação pelo DIA LUNAR corrente (método dos apps de referência):
-   noite de 2/10/2026 = dia 21 → p = 21/29,53 → iluminação 62% ✓
-   O DESENHO usa o mesmo p → número e imagem sempre casam.          */
+/* Fase em TEMPO REAL.
+   p = elongação Sol–Lua / 360°:  0=nova · 0,25=1º quarto · 0,5=cheia · 0,75=último
+   k = fração iluminada = (1 − cos E)/2  → muda minuto a minuto.
+   Ex.: 2/10/2026 22h (Brasil) ≈ 55% · 3/10 10h26 = 50,0% (Quarto minguante). */
 function faseAgora(date) {
-  const d = date || new Date();
-  const idade = idadeLua(d);
-  const p = Math.floor(idade) / SINODICO;
+  const d = date || new Date();               /* horário LOCAL do aparelho */
+  const lua = posicaoLua(d);
+  const E = norm(lua.lon - longitudeSolar(d)); /* ângulo real Sol–Lua AGORA */
+  const p = E / (2 * Math.PI);
   return {
-    k: (1 - Math.cos(2 * Math.PI * p)) / 2,   /* fração iluminada exibida   */
-    p: p,                                     /* mesma fração do desenho    */
-    idx: Math.floor(p * 8) % 8,               /* índice do nome da fase     */
-    idade: idade,
-    dist: posicaoLua(d).dist
+    k: (1 - Math.cos(E)) / 2,   /* fração iluminada exibida */
+    p: p,                       /* mesma fração do desenho  */
+    idx: Math.floor(p * 8) % 8, /* índice do nome da fase   */
+    idade: idadeLua(d),
+    dist: lua.dist
   };
 }
 
@@ -331,6 +344,11 @@ function altitudeLua(date, lat, lon) {
   const H = gmstRad(date) + lon * RAD - p.ra;
   const fi = lat * RAD;
   return Math.asin(Math.sin(fi) * Math.sin(p.dec) + Math.cos(fi) * Math.cos(p.dec) * Math.cos(H));
+}
+
+function interpolar(t1, t2, a1, a2) {
+  const f = a1 / (a1 - a2);
+  return new Date(t1.getTime() + f * (t2.getTime() - t1.getTime()));
 }
 
 /* Próximo nascer e próxima queda a partir de agora (janela de 48 h, passo 10 min) */
@@ -352,10 +370,6 @@ function nascerESePorLua(lat, lon) {
     return null;
   };
   return { nascer: prox(subidas), sePor: prox(descidas) };
-}
-function interpolar(t1, t2, a1, a2) {
-  const f = a1 / (a1 - a2);
-  return new Date(t1.getTime() + f * (t2.getTime() - t1.getTime()));
 }
 
 /* Localização: GPS salvo ou aproximação pelo fuso horário */
@@ -492,10 +506,13 @@ function atualizarLua() {
         '<b style="color:' + m.cor + '">' + m.titulo + '</b></div>' +
         '<p>' + m.texto + '</p></div>';
 
-    const alvos = [[0, FASES[0]], [SINODICO / 4, FASES[2]], [SINODICO / 2, FASES[4]], [3 * SINODICO / 4, FASES[6]]];
+    /* Próximas fases: momentos em que a ELONGAÇÃO atinge cada alvo
+       (consistente com a fase exibida em tempo real) */
+    const alvos = [[0, FASES[0]], [0.25, FASES[2]], [0.5, FASES[4]], [0.75, FASES[6]]];
     $('listaProximas').innerHTML = alvos.map(function (al) {
-      let dias = al[0] - fa.idade;
-      if (dias < 0.3) dias += SINODICO;
+      let dias = al[0] - fa.p;
+      if (dias <= 0.005) dias += 1;
+      dias *= SINODICO;
       const d = new Date(agora.getTime() + dias * DIA);
       return '<div class="linha-prox"><span>' + al[1].emoji + ' ' + al[1].nome + '</span>' +
         '<b>' + d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) +
@@ -867,7 +884,7 @@ document.addEventListener('visibilitychange', function () {
   if (!document.hidden) atualizarBotaoInstalar();
 });
 
-/* ================= 12. NAVEGAÇÃO / ESTRELAS / PWA ================= */
+/* ================= 12. NAVEGAÇÃO / ESTRELAS ================= */
 document.querySelectorAll('.tab').forEach(function (b) {
   b.addEventListener('click', function () {
     document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('ativo', x === b); });
