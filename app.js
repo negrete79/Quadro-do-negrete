@@ -1,18 +1,8 @@
 /* ============================================================
-   FASES DA LUA — app.js (v10)
-   Idade corrigida + nome da fase igual ao app de referência
+   FASES DA LUA — app.js (v11)
+   Igual à v10 + sinal de boot (__FDL_OK) para o vigia
    ============================================================ */
 'use strict';
-
-/* Erros aparecem na tela — nunca mais tela morta */
-function mostrarErro(msg) {
-  const b = document.getElementById('erroBarra');
-  if (b) { b.hidden = false; b.textContent = '⚠️ ' + msg; }
-}
-window.addEventListener('error', function (e) { mostrarErro(e.message); });
-window.addEventListener('unhandledrejection', function (e) {
-  mostrarErro(e.reason && e.reason.message ? e.reason.message : String(e.reason));
-});
 
 /* ---------- Constantes ---------- */
 const SINODICO = 29.530588853;
@@ -44,6 +34,10 @@ try { LOCAL = JSON.parse(localStorage.getItem('fdl_local') || 'null'); } catch (
 let sulAtual = true;
 
 const $ = function (id) { return document.getElementById(id); };
+
+function mostrarErro(msg) {
+  if (window.__FDL_ERRO) window.__FDL_ERRO(msg);
+}
 
 function mostrarToast(msg, ms) {
   const t = document.createElement('div');
@@ -83,13 +77,11 @@ function longitudeSolar(date) {
   return norm(L0 + C);
 }
 
-/* v10: BUG CORRIGIDO — antes subtraía o epoch duas vezes (era 19 em vez de 21) */
 function idadeLua(date) {
   const a = (((date || new Date()).getTime() - NOVA_REF) / DIA) % SINODICO;
   return a < 0 ? a + SINODICO : a;
 }
 
-/* p = elongação/2π: 0=nova · 0.25=quarto crescente · 0.5=cheia · 0.75=quarto minguante */
 function faseAgora(date) {
   const d = date || new Date();
   const lua = posicaoLua(d);
@@ -146,9 +138,7 @@ function refLocal() {
   return { lat: -15, lon: offH * 15, cidade: '', aproximado: true };
 }
 
-/* ============================================================
-   DESENHO DA FASE (convensão norte; no sul espelha com scale)
-   ============================================================ */
+/* ================= DESENHO DA LUA ================= */
 function caminhoFase(p, r) {
   p = ((p % 1) + 1) % 1;
   const c = Math.cos(2 * Math.PI * p);
@@ -512,4 +502,174 @@ function mostrarClima(dados, cidade) {
   $('climaAtual').innerHTML =
     '<div class="clima-top"><div>' +
     '<div class="clima-cidade">📍 ' + (cidade || 'Sua região') + '</div>' +
-    '<div class
+    '<div class="clima-temp">' + Math.round(c.temperature_2m) + '°C</div>' +
+    '<div class="clima-desc">' + w[1] + ' ' + w[0] + '</div></div>' +
+    '<div class="clima-ic-grande">' + (c.is_day ? w[1] : (c.weather_code === 0 ? '🌙' : w[1])) + '</div></div>' +
+    '<div class="clima-grid">' +
+    '<div><span>Sensação</span><b>' + Math.round(c.apparent_temperature) + '°</b></div>' +
+    '<div><span>Umidade</span><b>' + c.relative_humidity_2m + '%</b></div>' +
+    '<div><span>Vento</span><b>' + Math.round(c.wind_speed_10m) + ' km/h</b></div>' +
+    '<div><span>Chuva</span><b>' + (c.precipitation != null ? c.precipitation : 0) + ' mm</b></div></div>';
+  $('previsao').hidden = false;
+  $('previsao').innerHTML = dados.daily.time.map(function (t, i) {
+    const dw = wmo(dados.daily.weather_code[i]);
+    const dia = new Date(t + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short' });
+    return '<div class="prev-card"><b>' + dia + '</b><div class="prev-ic">' + dw[1] + '</div>' +
+      '<div class="prev-temp">' + Math.round(dados.daily.temperature_2m_max[i]) + '° ' +
+      '<span class="muted">' + Math.round(dados.daily.temperature_2m_min[i]) + '°</span></div>' +
+      '<div class="muted pequeno">💧 ' + (dados.daily.precipitation_probability_max[i] != null ? dados.daily.precipitation_probability_max[i] : 0) + '%</div></div>';
+  }).join('');
+}
+
+async function carregarClima(lat, lon, cidade) {
+  $('localStatus').textContent = 'Atualizando clima…';
+  try {
+    const dados = await obterClima(lat, lon);
+    mostrarClima(dados, cidade);
+    localStorage.setItem('fdl_clima', JSON.stringify({ t: Date.now(), cidade: cidade, dados: dados }));
+    $('localStatus').textContent = (cidade ? cidade + ' · ' : '') + lat.toFixed(4) + ', ' + lon.toFixed(4);
+  } catch (_) {
+    const salvo = localStorage.getItem('fdl_clima');
+    if (salvo) { const s = JSON.parse(salvo); mostrarClima(s.dados, s.cidade); }
+    $('localStatus').textContent = '⚠️ Sem internet — mostrando último clima salvo.';
+  }
+}
+
+function definirLocal(lat, lon, cidade, precisao) {
+  LOCAL = { lat: lat, lon: lon, cidade: cidade || '' };
+  localStorage.setItem('fdl_local', JSON.stringify(LOCAL));
+  atualizarLua();
+  if (precisao != null) {
+    $('localStatus').textContent =
+      '📡 GPS do aparelho: ±' + Math.round(precisao) + ' m' + (cidade ? ' · ' + cidade : '');
+  }
+  carregarClima(lat, lon, LOCAL.cidade);
+}
+
+function pedirGPS(mostrarStatus) {
+  if (!navigator.geolocation) {
+    if (mostrarStatus) $('localStatus').textContent = 'Seu navegador não suporta GPS.';
+    return;
+  }
+  if (mostrarStatus) $('localStatus').textContent = '📡 Obtendo localização do dispositivo…';
+  navigator.geolocation.getCurrentPosition(async function (pos) {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const cidade = await nomeCidade(lat, lon);
+    definirLocal(lat, lon, cidade, pos.coords.accuracy);
+  }, function (err) {
+    const msgs = {
+      1: '🚫 Permissão negada — toque no cadeado 🔒 do endereço → Localização → Permitir.',
+      2: '📡 Sem sinal — ative a Localização do aparelho nas configurações rápidas.',
+      3: '⏱️ Tempo esgotado — tente de novo em local aberto.'
+    };
+    $('localStatus').textContent = msgs[err.code] || 'Erro ao obter localização.';
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+
+async function gpsAutomatico() {
+  try {
+    const st = await navigator.permissions.query({ name: 'geolocation' });
+    if (st.state === 'denied') {
+      $('avisoLocal').textContent = '📍 Localização bloqueada — permita no navegador para precisão.';
+      return;
+    }
+  } catch (_) {}
+  pedirGPS(false);
+}
+
+async function buscarCidade() {
+  const nome = $('inpCidade').value.trim();
+  if (!nome) return;
+  $('localStatus').textContent = '🔎 Buscando…';
+  try {
+    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(nome) + '&count=1&language=pt&format=json');
+    const j = await r.json();
+    if (!j.results || !j.results.length) { $('localStatus').textContent = 'Cidade não encontrada.'; return; }
+    const res = j.results[0];
+    definirLocal(res.latitude, res.longitude,
+      res.name + (res.admin1 ? ' - ' + res.admin1 : '') + (res.country ? ', ' + res.country : ''));
+  } catch (_) { $('localStatus').textContent = 'Erro na busca (sem internet?).'; }
+}
+ $('btnBuscar').addEventListener('click', buscarCidade);
+ $('inpCidade').addEventListener('keydown', function (e) { if (e.key === 'Enter') buscarCidade(); });
+
+/* ================= INSTALAÇÃO ================= */
+const btnInstalar = $('btnInstalar');
+let deferredPrompt = null;
+
+const rodandoComoApp = function () {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+};
+
+function atualizarBotaoInstalar() { btnInstalar.hidden = rodandoComoApp(); }
+atualizarBotaoInstalar();
+
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!rodandoComoApp()) btnInstalar.hidden = false;
+});
+
+btnInstalar.addEventListener('click', async function () {
+  if (rodandoComoApp()) { btnInstalar.hidden = true; return; }
+  if (!deferredPrompt) {
+    mostrarToast('⏳ Preparando instalação… aguarde e toque de novo.');
+    await new Promise(function (r) { setTimeout(r, 4000); });
+    if (!deferredPrompt) {
+      mostrarToast('Use o menu ⋮ do Chrome → "Instalar app".', 6000);
+      return;
+    }
+  }
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+});
+
+window.addEventListener('appinstalled', function () {
+  deferredPrompt = null;
+  btnInstalar.hidden = true;
+  mostrarToast('✅ App instalado! Abra pelo ícone 🌒 da tela inicial.');
+});
+
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) atualizarBotaoInstalar();
+});
+
+/* ================= NAVEGAÇÃO / PWA ================= */
+document.querySelectorAll('.tab').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('ativo', x === b); });
+    document.querySelectorAll('.tab-page').forEach(function (s) { s.classList.toggle('ativo', s.id === b.dataset.tab); });
+    window.scrollTo({ top: 0 });
+  });
+});
+
+function criarEstrelas() {
+  for (let i = 0; i < 90; i++) {
+    const s = document.createElement('i');
+    s.style.cssText = 'left:' + (Math.random() * 100) + '%;top:' + (Math.random() * 100) + '%;' +
+      'width:' + (1 + Math.random() * 1.6) + 'px;height:' + (1 + Math.random() * 1.6) + 'px;' +
+      'animation-duration:' + (2 + Math.random() * 4) + 's;animation-delay:' + (Math.random() * 4) + 's';
+    $('ceu').appendChild(s);
+  }
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+
+/* ================= INICIALIZAÇÃO ================= */
+criarEstrelas();
+renderPlantio();
+renderMadeira();
+atualizarCeu();
+atualizarLua();
+setInterval(atualizarCeu, 1000);
+setInterval(atualizarLua, 60000);
+
+if (LOCAL && LOCAL.lat != null) {
+  $('localStatus').textContent = LOCAL.cidade || (LOCAL.lat.toFixed(4) + ', ' + LOCAL.lon.toFixed(4));
+  const salvo = localStorage.getItem('fdl_clima');
+  if (salvo) { const s = JSON.parse(salvo); mostrarClima(s.dados, s.cidade); }
+}
+gpsAutomatico();
+
+window.__FDL_OK = true;   /* avisa o vigia: o app iniciou com sucesso */
