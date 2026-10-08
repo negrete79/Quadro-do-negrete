@@ -1,5 +1,5 @@
-/* Service Worker — Fases da Lua (v18) */
-const CACHE = 'fases-da-lua-v18';
+/* Service Worker — Fases da Lua (v19) */
+const CACHE = 'fases-da-lua-v19';
 const PRECACHE = ['./', './index.html', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
