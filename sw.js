@@ -1,5 +1,5 @@
-/* Service Worker — Fases da Lua (v19) */
-const CACHE = 'fases-da-lua-v19';
+/* Service Worker — Fases da Lua (v20) */
+const CACHE = 'fases-da-lua-v20';
 const PRECACHE = ['./', './index.html', './manifest.json',
   './icon.svg', './icon-192.png', './icon-512.png'];
 
@@ -27,7 +27,8 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  const ehApi = ['open-meteo', 'bigdatacloud', 'nominatim'].some(function (h) { return url.hostname.includes(h); });
+  const ehApi = ['open-meteo', 'bigdatacloud', 'nominatim', 'wttr.in']
+    .some(function (h) { return url.hostname.includes(h); });
   if (ehApi) {
     e.respondWith(
       fetch(req).then(function (resp) {
