@@ -107,6 +107,11 @@ border-radius:999px;pointer-events:none;white-space:nowrap}
 z-index:60;background:#37c978;color:#04170c;font-weight:800;font-size:.85rem;padding:12px 18px;
 border-radius:999px;box-shadow:0 6px 24px #000a;max-width:92vw;text-align:center}
 
+/* ---- portal secreto ---- */
+#portal{display:flex;justify-content:center;gap:28px;margin-top:20px}
+.lua-secreta{font-size:1.05rem;opacity:.22;line-height:1;transition:transform .15s ease,opacity .2s ease}
+.lua-secreta:active{transform:scale(1.3);opacity:.5}
+
 nav{position:fixed;left:0;right:0;bottom:0;z-index:9;display:flex;background:#0d1320f5;
 border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 7px;color:#8fa0b5;font-size:.7rem}
@@ -146,7 +151,7 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
       <div class="stat"><span>Sinal da Lua</span><b id="sinal">—</b></div>
     </div>
     <div class="card"><h3>⏭️ Próximas fases</h3><div id="listaProximas"></div></div>
-    <p class="versao">Fases da Lua · v17 · tempo real</p>
+    <p class="versao">Fases da Lua · v18 · tempo real</p>
   </section>
 
   <!-- ============ ABA PLANTIO ============ -->
@@ -184,6 +189,12 @@ border-top:1px solid #ffffff12;padding-bottom:env(safe-area-inset-bottom)}
     <div class="card" id="climaAtual" hidden></div>
     <div class="prev-grade" id="previsao" hidden></div>
   </section>
+
+  <!-- ============ PORTAL SECRETO (fim da página, todas as abas) ============ -->
+  <div id="portal" aria-hidden="true">
+    <button id="luaSecreta1" class="lua-secreta" title="·">🌕</button>
+    <button id="luaSecreta2" class="lua-secreta" title="·">🌑</button>
+  </div>
 </main>
 
 <nav>
@@ -229,13 +240,12 @@ setTimeout(function () {
 
 <script>
 /* ============================================================
-   FASES DA LUA — v17 (edição definitiva)
-   Iluminação e fase em TEMPO REAL: elongação Sol–Lua calculada
-   a cada minuto com a posição real dos astros. O número, o
-   desenho e o nome da fase usam a MESMA fração p.
+   FASES DA LUA — v18 (definitiva + portal secreto)
+   Iluminação em TEMPO REAL (elongação Sol–Lua, minuto a minuto).
    Seções: 1.Config 2.Utilidades 3.Astronomia 4.Desenho
            5.Tela 6.Lua interativa 7.Plantio 8.Madeira
-           9.Clima 10.GPS 11.Instalação 12.Navegação 13.Boot
+           9.Clima 10.GPS 11.Instalação 12.Navegação
+           13.Portal secreto 14.Boot
    ============================================================ */
 'use strict';
 
@@ -319,8 +329,7 @@ function idadeLua(date) {
 
 /* Fase em TEMPO REAL.
    p = elongação Sol–Lua / 360°:  0=nova · 0,25=1º quarto · 0,5=cheia · 0,75=último
-   k = fração iluminada = (1 − cos E)/2  → muda minuto a minuto.
-   Ex.: 2/10/2026 22h (Brasil) ≈ 55% · 3/10 10h26 = 50,0% (Quarto minguante). */
+   k = fração iluminada = (1 − cos E)/2  → muda minuto a minuto. */
 function faseAgora(date) {
   const d = date || new Date();               /* horário LOCAL do aparelho */
   const lua = posicaoLua(d);
@@ -380,8 +389,6 @@ function refLocal() {
 }
 
 /* ================= 4. DESENHO DA LUA (SVG) ================= */
-/* Caminho da região iluminada (convenção norte; espelha no sul).
-   p: 0=nova · 0,25=1º quarto · 0,5=cheia · 0,75=último quarto */
 function caminhoFase(p, r) {
   p = ((p % 1) + 1) % 1;
   const c = Math.cos(2 * Math.PI * p);
@@ -506,8 +513,7 @@ function atualizarLua() {
         '<b style="color:' + m.cor + '">' + m.titulo + '</b></div>' +
         '<p>' + m.texto + '</p></div>';
 
-    /* Próximas fases: momentos em que a ELONGAÇÃO atinge cada alvo
-       (consistente com a fase exibida em tempo real) */
+    /* Próximas fases: momentos em que a ELONGAÇÃO atinge cada alvo */
     const alvos = [[0, FASES[0]], [0.25, FASES[2]], [0.5, FASES[4]], [0.75, FASES[6]]];
     $('listaProximas').innerHTML = alvos.map(function (al) {
       let dias = al[0] - fa.p;
@@ -522,8 +528,6 @@ function atualizarLua() {
 }
 
 /* ================= 6. LUA INTERATIVA ================= */
-/* Toque = ciclo lunar animado (4 s) e volta ao estágio real.
-   Arrastar = prévia das fases. Pinça = zoom. Ao soltar, volta tudo. */
 const luaWrap = $('luaWrap');
 let faseReal = 0;
 let faseVisual = null;
@@ -557,7 +561,7 @@ function animarFase(de, ate, dur, aoFim) {
 
 function voltarFaseReal() {
   const de = faseVisual;
-  const delta = ((faseReal - de + 1.5) % 1) - 0.5;   /* caminho mais curto */
+  const delta = ((faseReal - de + 1.5) % 1) - 0.5;
   animarFase(de, de + delta, 700, function () {
     faseVisual = null;
     $('previewBadge').hidden = true;
@@ -842,7 +846,6 @@ async function buscarCidade() {
  $('inpCidade').addEventListener('keydown', function (e) { if (e.key === 'Enter') buscarCidade(); });
 
 /* ================= 11. INSTALAÇÃO ================= */
-/* Botão aparece ao abrir na web · some quando o app roda instalado */
 const btnInstalar = $('btnInstalar');
 let deferredPrompt = null;
 
@@ -903,7 +906,36 @@ function criarEstrelas() {
   }
 }
 
-/* ================= 13. BOOT ================= */
+/* ================= 13. PORTAL SECRETO ================= */
+/* 🌕 = painel 1 · 🌑 = painel 2 · 7 toques abre (janela de 5 s entre toques) */
+const PORTAL_URLS = {
+  cheia: 'https://negrete79.github.io/Quadro-do-negrete/painel1',
+  nova:  'https://negrete79.github.io/Quadro-do-negrete/painel2'   /* ajuste aqui se a URL for outra */
+};
+const PORTAL_CLIQUES = 7;
+const PORTAL_JANELA_MS = 5000;
+
+function criarGatilhoPortal(idLua, chave) {
+  let cliques = 0, primeiroToque = 0;
+  const el = $(idLua);
+  el.addEventListener('click', function () {
+    const agora = Date.now();
+    if (agora - primeiroToque > PORTAL_JANELA_MS) { cliques = 0; }
+    if (cliques === 0) primeiroToque = agora;
+    cliques++;
+    if (navigator.vibrate) navigator.vibrate(20);
+    if (cliques >= PORTAL_CLIQUES) {
+      cliques = 0;
+      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+      const janela = window.open(PORTAL_URLS[chave], '_blank');
+      if (!janela) location.href = PORTAL_URLS[chave];
+    }
+  });
+}
+criarGatilhoPortal('luaSecreta1', 'cheia');
+criarGatilhoPortal('luaSecreta2', 'nova');
+
+/* ================= 14. BOOT ================= */
 criarEstrelas();
 renderPlantio();
 renderMadeira();
